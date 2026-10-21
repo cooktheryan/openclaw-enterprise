@@ -8,6 +8,7 @@ author: cooktheryan
 
 - **ID:** RFC-0023
 - **Created:** 2026-10-21
+- **RFC PR:** [#3137](https://github.com/openclaw/openclaw-enterprise/pull/3137)
 - **Implementation plan:** [0023-gitlab-repository-credentials](../plans/0023-gitlab-repository-credentials.md)
 - **Related:** [Feature request #3135](https://github.com/openclaw/openclaw-enterprise/issues/3135), [Credential Proxy proposal PR #2484](https://github.com/openclaw/openclaw-enterprise/pull/2484), [implementation PR #2487](https://github.com/openclaw/openclaw-enterprise/pull/2487)
 
