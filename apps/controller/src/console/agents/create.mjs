@@ -96,13 +96,16 @@ function field(label, input, hint, error = null) {
   return node;
 }
 
-function configurationTemplate(harnessId, nativeProvider, providerModel) {
+function configurationTemplate(harnessId, nativeProvider, providerModel, modelEndpoint = "") {
   const providerId = harnessId === "codex" ? "codex" : nativeProvider;
   const modelReference = `${providerId}/${providerModel}`;
+  const customEndpoint = nativeProvider === "openai" && modelEndpoint.trim() !== "";
   let baseUrl =
     nativeProvider === "anthropic" ? "https://api.anthropic.com" : "https://api.openai.com/v1";
   if (harnessId === "codex") {
-    baseUrl = "http://127.0.0.1:9";
+    baseUrl = customEndpoint ? modelEndpoint.trim() : "http://127.0.0.1:9";
+  } else if (customEndpoint) {
+    baseUrl = modelEndpoint.trim();
   }
   const provider = {
     [providerId]: {
@@ -112,7 +115,7 @@ function configurationTemplate(harnessId, nativeProvider, providerModel) {
         {
           id: providerModel,
           name: providerModel,
-          ...(harnessId === "openclaw" && nativeProvider === "openai"
+          ...(harnessId === "openclaw" && nativeProvider === "openai" && !customEndpoint
             ? {
                 contextWindow: 128000,
                 maxTokens: 8192,
@@ -691,6 +694,56 @@ function renderAgentForm(context, rendered, presetOptions = {}, draft = {}) {
     pattern: "\\S+",
   });
   model.value = initialModel?.split("/").slice(1).join("/") || "";
+  const modelEndpoint = element("input", {
+    id: "model-endpoint",
+    type: "url",
+    autocomplete: "url",
+    inputmode: "url",
+    spellcheck: "false",
+    placeholder: "https://models.example.com/v1",
+  });
+  const modelEndpointError = fieldError(modelEndpoint);
+  const modelEndpointField = field(
+    "OpenAI-compatible endpoint (optional)",
+    modelEndpoint,
+    "Leave blank to use OpenAI. Dedicated Codex uses the Installation endpoint when configured. Check and trust this destination; the Agent sends its selected API key to this HTTPS endpoint ending in /v1.",
+    modelEndpointError.node,
+  );
+  const validateModelEndpoint = () => {
+    const value = modelEndpoint.value.trim();
+    let problem = "";
+    if (value !== "") {
+      let endpoint;
+      try {
+        endpoint = new URL(value);
+      } catch {
+        endpoint = undefined;
+      }
+      if (
+        endpoint === undefined ||
+        endpoint.protocol !== "https:" ||
+        endpoint.hostname === "" ||
+        endpoint.hostname.includes("*") ||
+        endpoint.port === "0" ||
+        endpoint.username !== "" ||
+        endpoint.password !== "" ||
+        endpoint.search !== "" ||
+        endpoint.hash !== "" ||
+        !endpoint.pathname.replace(/\/$/u, "").endsWith("/v1")
+      ) {
+        problem =
+          "Enter an HTTPS model endpoint with a base path ending in /v1 and no credentials, query, or fragment.";
+      }
+    }
+    modelEndpoint.setCustomValidity(problem);
+  };
+  const supportsModelEndpoint = () =>
+    nativeProvider.value === "openai" &&
+    (binding?.method ?? authMethod.value) === "api_key" &&
+    ((harness.value === "openclaw" && mode.value === "embedded") ||
+      (harness.value === "codex" && mode.value === "dedicated"));
+  const selectedModelEndpoint = () =>
+    supportsModelEndpoint() ? modelEndpoint.value.trim().replace(/\/$/u, "") : "";
   const apiKey = element("input", {
     id: "provider-api-key",
     type: "password",
@@ -721,6 +774,8 @@ function renderAgentForm(context, rendered, presetOptions = {}, draft = {}) {
   let manualModel = !useModelChoices;
   let pendingModelSettings = draft.pendingModelSettings;
   let pendingProviderModel = draft.pendingProviderModel;
+  let modelEndpointChanged = false;
+  let lastModelEndpointValue = "";
   const modelChoice = element(
     "select",
     { id: "agent-model" },
@@ -751,6 +806,11 @@ function renderAgentForm(context, rendered, presetOptions = {}, draft = {}) {
     modelField,
   );
   function resetModelChoices(resetTransport = false, selectedModel = "") {
+    if (resetTransport) {
+      modelEndpoint.value = "";
+      modelEndpointChanged = false;
+      lastModelEndpointValue = "";
+    }
     manualModel = !useModelChoices;
     model.value = MODEL_CHOICES[nativeProvider.value].includes(selectedModel) ? selectedModel : "";
     modelChoice.replaceChildren(
@@ -852,8 +912,10 @@ function renderAgentForm(context, rendered, presetOptions = {}, draft = {}) {
           modelCredentialField,
           oauthLogin.section,
           passwordAuth ? transientCredentialField : pluginDiscoveryTokenDetails,
+          modelEndpointField,
         ]
       : []),
+    ...(binding ? [modelEndpointField] : []),
     modelSection,
   );
   name.value = agent.name ?? "";
@@ -873,9 +935,25 @@ function renderAgentForm(context, rendered, presetOptions = {}, draft = {}) {
   if (harness.value === "codex") {
     mode.value = "dedicated";
   }
+  const configuredProviderId = harness.value === "codex" ? "codex" : nativeProvider.value;
+  const configuredBaseUrl =
+    rendered.configuration?.values?.models?.providers?.[configuredProviderId]?.baseUrl;
+  if (
+    typeof configuredBaseUrl === "string" &&
+    configuredBaseUrl !== "https://api.openai.com/v1" &&
+    configuredBaseUrl !== "https://api.anthropic.com" &&
+    configuredBaseUrl !== "http://127.0.0.1:9"
+  ) {
+    modelEndpoint.value = configuredBaseUrl;
+  }
   const currentTemplate = () =>
     JSON.stringify(
-      configurationTemplate(harness.value, nativeProvider.value, model.value.trim()),
+      configurationTemplate(
+        harness.value,
+        nativeProvider.value,
+        model.value.trim(),
+        selectedModelEndpoint(),
+      ),
       null,
       2,
     );
@@ -889,6 +967,7 @@ function renderAgentForm(context, rendered, presetOptions = {}, draft = {}) {
     if (!confirmDiscard()) {
       return;
     }
+    modelEndpoint.value = "";
     pendingModelSettings = undefined;
     pendingProviderModel = undefined;
     configuration.value = currentTemplate();
@@ -901,7 +980,12 @@ function renderAgentForm(context, rendered, presetOptions = {}, draft = {}) {
     if (values === undefined) {
       return;
     }
-    const next = configurationTemplate(harness.value, nativeProvider.value, model.value.trim());
+    const next = configurationTemplate(
+      harness.value,
+      nativeProvider.value,
+      model.value.trim(),
+      selectedModelEndpoint(),
+    );
     const previous = values.agents?.defaults?.model;
     const previousModel = typeof previous === "string" ? previous : previous?.primary;
     const modelSettings = { ...values.agents?.defaults?.models };
@@ -959,6 +1043,7 @@ function renderAgentForm(context, rendered, presetOptions = {}, draft = {}) {
       delete providers.anthropic;
       delete providers.codex;
       Object.assign(providers, next.models?.providers);
+      modelEndpointChanged = false;
     } else if (selectedModel) {
       const providerId = harness.value === "codex" ? "codex" : nativeProvider.value;
       const templateProvider = next.models.providers[providerId];
@@ -979,6 +1064,7 @@ function renderAgentForm(context, rendered, presetOptions = {}, draft = {}) {
         };
         providers[providerId] = {
           ...existingProvider,
+          ...(modelEndpointChanged ? { baseUrl: templateProvider.baseUrl } : {}),
           models:
             previousEntry && !retainPrevious
               ? existingModels.map((entry) => (entry === previousEntry ? selectedEntry : entry))
@@ -987,12 +1073,14 @@ function renderAgentForm(context, rendered, presetOptions = {}, draft = {}) {
       } else {
         providers[providerId] = {
           ...existingProvider,
+          ...(modelEndpointChanged ? { baseUrl: templateProvider.baseUrl } : {}),
           models: existingModels.filter(
             (entry) =>
               !namesModel(entry, previousId) || namesModel(entry, selectedId) || retainPrevious,
           ),
         };
       }
+      modelEndpointChanged = false;
     }
     values.models = { ...values.models, providers };
     if (next.plugins) {
@@ -1039,9 +1127,27 @@ function renderAgentForm(context, rendered, presetOptions = {}, draft = {}) {
   });
   authMethod.addEventListener("change", () => {
     clearModelCredential();
-    resetModelChoices();
+    resetModelChoices(true);
   });
   model.addEventListener("change", () => updateModelConfiguration());
+  modelEndpoint.addEventListener("input", validateModelEndpoint);
+  modelEndpoint.addEventListener("change", () => {
+    const endpoint = modelEndpoint.value.trim();
+    if (endpoint === lastModelEndpointValue) {
+      validateModelEndpoint();
+      return;
+    }
+    lastModelEndpointValue = endpoint;
+    model.value = "";
+    modelChoice.value = "";
+    manualModel = !useModelChoices || endpoint !== "";
+    modelEndpointChanged = true;
+    pendingModelSettings = undefined;
+    pendingProviderModel = undefined;
+    validateModelEndpoint();
+    updateModelConfiguration();
+    updateControls();
+  });
   harness.addEventListener("change", () => {
     // Embedded is OpenClaw's default because dedicated OpenClaw needs a provisioning
     // Sandbox Driver; operators opt into it through Execution mode. An Installation that
@@ -1060,6 +1166,12 @@ function renderAgentForm(context, rendered, presetOptions = {}, draft = {}) {
     } else {
       updateModelConfiguration(true);
     }
+    if (modelEndpoint.value.trim() !== "" && !supportsModelEndpoint()) {
+      modelEndpoint.value = "";
+      model.value = "";
+      modelChoice.value = "";
+      resetModelChoices(true);
+    }
     updateControls();
   });
   mode.addEventListener("change", () => {
@@ -1068,8 +1180,13 @@ function renderAgentForm(context, rendered, presetOptions = {}, draft = {}) {
     if (mode.value === "embedded") {
       harness.value = "openclaw";
     }
-    // Topology alone does not change the model policy or provider transport.
-    if (harness.value !== previousHarness) {
+    // The Agent-level endpoint only belongs to Embedded OpenClaw and API-key Codex.
+    if (modelEndpoint.value.trim() !== "" && !supportsModelEndpoint()) {
+      modelEndpoint.value = "";
+      model.value = "";
+      modelChoice.value = "";
+      resetModelChoices(true);
+    } else if (harness.value !== previousHarness) {
       updateModelConfiguration(true);
     } else {
       renderChannelEditor();
@@ -1603,6 +1720,9 @@ function renderAgentForm(context, rendered, presetOptions = {}, draft = {}) {
   form.addEventListener("input", (event) => {
     edited = true;
     event.target.setCustomValidity?.("");
+    if (event.target === modelEndpoint) {
+      validateModelEndpoint();
+    }
     if (event.target === name) {
       checkNameLength();
     }
@@ -1618,6 +1738,7 @@ function renderAgentForm(context, rendered, presetOptions = {}, draft = {}) {
     authMethod,
     model,
     modelChoice,
+    modelEndpoint,
     configuration,
     plugins,
     ...Object.fromEntries(workspaceInputs),
@@ -1635,7 +1756,14 @@ function renderAgentForm(context, rendered, presetOptions = {}, draft = {}) {
       input.value = draft.inputs[key];
     }
   }
+  if (!supportsModelEndpoint()) {
+    modelEndpoint.value = "";
+  }
   manualModel = draft.manualModel ?? manualModel;
+  if (modelEndpoint.value.trim() !== "") {
+    manualModel = true;
+  }
+  lastModelEndpointValue = modelEndpoint.value.trim();
   // Whether the reader changed the form or its Preset variables: Cancel then asks first, and a
   // reload or tab close warns. Restoring a draft and the form's own updates fire no trusted event.
   let touched = Boolean(draft.touched);
@@ -1971,6 +2099,7 @@ function renderAgentForm(context, rendered, presetOptions = {}, draft = {}) {
     (binding?.method ?? authMethod.value) !== "credential_source" &&
     (!shouldProvision() || !modelSourceType());
   const updateControls = () => {
+    validateModelEndpoint();
     const saved = Boolean(savedConfiguration || savedAgent || provisioningAttempt);
     const planLocked =
       pending ||
@@ -1991,6 +2120,7 @@ function renderAgentForm(context, rendered, presetOptions = {}, draft = {}) {
       authMethod,
       model,
       modelChoice,
+      modelEndpoint,
       harness,
       mode,
       reset,
@@ -2182,6 +2312,10 @@ function renderAgentForm(context, rendered, presetOptions = {}, draft = {}) {
           credentialRegistration,
         ),
     );
+    const endpointAvailable = supportsModelEndpoint();
+    const customEndpoint = endpointAvailable && modelEndpoint.value.trim() !== "";
+    modelEndpointField.hidden = !endpointAvailable;
+    modelEndpoint.disabled = planLocked || !endpointAvailable || Boolean(savedConfiguration);
     if (usesPat) {
       apiKey.placeholder = "at-…";
       credentialHelp.replaceChildren(
@@ -2229,14 +2363,16 @@ function renderAgentForm(context, rendered, presetOptions = {}, draft = {}) {
       saved ||
       Boolean(savedSecret || savedCredentialSource || credentialRegistration);
     if (useModelChoices) {
-      choiceField.hidden = manualModel;
-      modelField.hidden = !manualModel;
-      model.required = manualModel;
-      modelChoice.required = !manualModel;
-      toggleModel.textContent = manualModel
+      const showManualModel = manualModel || customEndpoint;
+      choiceField.hidden = showManualModel;
+      modelField.hidden = !showManualModel;
+      toggleModel.hidden = customEndpoint;
+      model.required = showManualModel;
+      modelChoice.required = !showManualModel;
+      toggleModel.textContent = showManualModel
         ? "Choose a model from the list"
         : "Enter model ID manually";
-      toggleModel.disabled ||= Boolean(savedConfiguration);
+      toggleModel.disabled = Boolean(savedConfiguration);
     }
     reloadRepositories.disabled = pending || outcomeUnknown;
     startNewDraft.disabled = pending || outcomeUnknown;

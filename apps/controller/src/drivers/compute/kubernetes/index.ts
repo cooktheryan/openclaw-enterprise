@@ -2554,8 +2554,38 @@ function requireConfiguredModelProviders(
     callerSettingError,
     options,
   );
+  requireAgentOpenAiEndpoint(configuration, authentication.providerId, options);
   // An inline key is left to the Configuration Driver, whose message says to use a Secret.
   requireProviderApiKeys(configuration, harnessId === "openclaw", authentication, true, options);
+}
+
+function requireAgentOpenAiEndpoint(
+  configuration: Readonly<OpenClawConfigurationDocument>,
+  providerId: string,
+  options?: ConfigurationValidationOptions,
+): void {
+  if (providerId !== "openai" && providerId !== "codex") {
+    return;
+  }
+  const path = ["models", "providers", providerId, "baseUrl"] as const;
+  if (options?.unresolved?.(path) !== undefined) {
+    return;
+  }
+  const provider = asRecord(asRecord(asRecord(configuration.models)?.providers)?.[providerId]);
+  const baseUrl = provider?.baseUrl;
+  if (baseUrl === undefined || (providerId === "codex" && baseUrl === "http://127.0.0.1:9")) {
+    return;
+  }
+  if (
+    typeof baseUrl !== "string" ||
+    normalizeOpenAiBaseUrl(baseUrl) === undefined ||
+    openAiBaseUrlRewritesIpv4(baseUrl)
+  ) {
+    throw callerSettingError(
+      path.join("."),
+      "must be an HTTPS OpenAI-compatible endpoint with a base path ending in /v1 and no credentials, query, or fragment",
+    );
+  }
 }
 
 // The error contract caps the message a ConfigurationHarnessError becomes.
@@ -12679,7 +12709,13 @@ chmodSync(${JSON.stringify(nodeStatePath)}, 0o700);`;
       revision.harness.mode === "dedicated" &&
       revision.harnessAuth?.method === "api_key"
     ) {
-      openaiBaseUrl = this.options.runtime?.codexModelBaseUrl;
+      const providers = asRecord(asRecord(revision.configuration.models)?.providers);
+      const codexProvider = asRecord(providers?.codex);
+      const agentEndpoint = codexProvider?.baseUrl;
+      openaiBaseUrl =
+        typeof agentEndpoint === "string" && agentEndpoint !== "http://127.0.0.1:9"
+          ? agentEndpoint
+          : this.options.runtime?.codexModelBaseUrl;
     }
     if (openaiBaseUrl !== undefined) {
       const normalized = normalizeOpenAiBaseUrl(openaiBaseUrl);

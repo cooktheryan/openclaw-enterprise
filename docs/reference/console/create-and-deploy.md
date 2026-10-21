@@ -47,6 +47,14 @@ block direct Secret-backed model and environment projection.
    Choose a model from the starter list or select **Enter model ID manually**.
    **Choose a model from the list** returns. Switching modes retains that provider's listed models; returning with an unlisted custom ID
    requires another selection. Other settings remain.
+   With OpenAI API-key authentication, Dedicated Codex and Embedded OpenClaw
+   also show **OpenAI-compatible endpoint (optional)**. Leave it blank to use
+   the default endpoint behavior: OpenAI, or the Installation endpoint for
+   Dedicated Codex if configured. To use a custom endpoint, enter its HTTPS
+   `/v1` URL and a model ID. Check and trust the destination because the Agent
+   sends its selected API key there. The form does not discover models from
+   that endpoint. A custom Agent endpoint takes precedence over the Installation
+   endpoint for Dedicated Codex.
    No model is preselected.
 4. Confirm Installation, credential, and runtime support for the model. Primary
    and fallback models must share a supported provider and Harness. For custom settings,

@@ -1,7 +1,7 @@
 ---
 created: 2026-10-20
-updated: 2026-10-20
-last_updated_session: fix-1020c
+updated: 2026-10-21
+last_updated_session: authoring-run/f6702bca-4359-46cf-84e2-e02001aa2733
 ---
 
 # Console Agent creation
@@ -27,6 +27,9 @@ user-visible behavior.
 ```mermaid
 graph TD
   A["Create Agent form"] --> B["Plugins, model, and repository choices"]
+  B -->|OpenAI API key and custom endpoint| H["Enter endpoint and manual model ID"]
+  H -->|supported Dedicated| C["Queue provisioning with inline Configuration"]
+  H -->|ordinary draft| E["Validate, then POST Configuration and Agent"]
   B -->|supported Dedicated| C["Queue provisioning with inline Configuration"]
   C --> D["Worker creates resources, grants and first deployment"]
   B -->|ordinary draft| E["Validate, then POST Configuration and Agent"]
@@ -67,11 +70,27 @@ Configuration model to `model.value`. `updateControls` sets the button label,
 visibility, and required input; the toggle moves focus. Returning preserves credentials and unrelated
 Configuration; saved-Configuration and pending-request locks govern both directions.
 
+`supportsModelEndpoint` shows the optional endpoint for OpenAI API-key
+authentication with Dedicated Codex or Embedded OpenClaw. A nonblank value
+requires a manual model ID. `validateModelEndpoint` runs when controls update,
+including after a draft restores its fields. It accepts HTTPS `/v1` URLs without
+user info, query, or fragment. `configurationTemplate` writes the URL to
+`models.providers.codex.baseUrl` for Codex or `models.providers.openai.baseUrl`
+for OpenClaw; the key stays in the existing Secret binding. The field returns
+enabled when the creator switches back to a supported authentication method.
+Kubernetes `requireAgentOpenAiEndpoint` rejects unsupported values at
+Configuration admission. `pluginRuntimeSnapshot` uses a custom Dedicated Codex
+Agent endpoint before the Installation endpoint and normalizes it before it
+builds runtime settings. Embedded OpenClaw reads its provider URL from the
+Agent's Configuration.
+
 `configurationTemplate` enables Control UI with loopback origins on port 18789.
 Compute supplies gateway authentication; Presets replace the starter unchanged.
 [Native admin access](../agent-native-admin.md) owns HTTPS isolation.
 
 ### 3. Load repository options
+
+`apps/controller/src/console/agents/repositories.mjs:createRepositoryFields`
 
 `createRepositoryFields` loads `GET /namespaces/:namespaceId/agents/repository-options`,
 then requests optional descriptions for visible refs. [Repository admission](../agent-repository-credentials.md) resolves the
@@ -81,6 +100,8 @@ permits creation without bindings, and only without retained selections; other
 failures block submission.
 
 ### 4. Submit provisioning or an ordinary draft
+
+`apps/controller/src/console/agents/create.mjs:renderAgentForm`
 
 Supported Dedicated runtimes submit inline Configuration, optional repository
 access, and Secret references to [provisioning](../agent-provisioning.md), even after
@@ -131,4 +152,5 @@ Switching methods hides that feedback without changing the lookup or saved choic
 
 ## Changelog
 
+- 2026-10-21 12:07: Documented compatible endpoints and endpoint form validation. (authoring-run/f6702bca-4359-46cf-84e2-e02001aa2733 - e8185dac805b737363c7178d3068b310a53a7c24)
 - 2026-10-20 05:00: Split from the platform console flow's step 3. (docs-split-1020)

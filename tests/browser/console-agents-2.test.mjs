@@ -1541,6 +1541,144 @@ test("Static model selection survives credential edits and resets for provider o
   );
 });
 
+test(
+  "OpenAI-compatible endpoint is re-enabled after switching back to API key authentication",
+  async (t) => {
+    const passwordPreset = structuredClone(defaultCodexPreset);
+    passwordPreset.template.agent.harnessAuth = {
+      method: "api_key",
+      secret: "synthetic-openai-model-key",
+    };
+    const fixture = await createConsoleAppFixture(t, { defaultPresets: [passwordPreset] });
+    await fixture.bootstrap();
+    const namespace = await fixture.createNamespace("Endpoint authentication", { ready: true });
+    const { page } = await newPage(t, fixture);
+    await routeInstallationWithoutProvisioning(page, fixture);
+    await login(page, fixture, `/console/agents/new?namespace=${namespace.id}`);
+    await page.getByRole("button", { name: "Start with default Preset" }).click();
+
+    const endpoint = page.getByLabel("OpenAI-compatible endpoint (optional)", { exact: true });
+    const authentication = page.getByLabel("Authentication method", { exact: true });
+    assert.equal(await endpoint.isVisible(), true);
+    assert.equal(await endpoint.isEnabled(), true);
+    assert.match(await endpoint.locator("..").textContent(), /trust this destination/u);
+
+    await authentication.selectOption("codex_pat");
+    assert.equal(await endpoint.isVisible(), false);
+    assert.equal(await endpoint.isEnabled(), false);
+
+    await authentication.selectOption("api_key");
+    assert.equal(await endpoint.isVisible(), true);
+    assert.equal(await endpoint.isEnabled(), true);
+  },
+);
+
+test("Agent creation saves a custom HTTPS endpoint and manual model through the Agent API", async (t) => {
+  const fixture = await createConsoleAppFixture(t);
+  await fixture.bootstrap();
+  const namespace = await fixture.createNamespace("Custom model endpoint", { ready: true });
+  const { page } = await newPage(t, fixture);
+  await routeInstallationWithoutProvisioning(page, fixture);
+  const requests = apiRequests(page, fixture.origin);
+  await login(page, fixture, `/console/agents/new?namespace=${namespace.id}`);
+  await page.getByRole("button", { name: "Start with default Preset" }).click();
+  await page.getByLabel("Agent name").fill("Custom model endpoint Agent");
+  const endpoint = page.getByLabel("OpenAI-compatible endpoint (optional)", { exact: true });
+  const choice = page.getByLabel("Model", { exact: true });
+  const model = page.getByLabel("Model ID", { exact: true });
+  await endpoint.fill("http://models.example.test/v1");
+  await endpoint.press("Tab");
+  assert.equal(await endpoint.evaluate((input) => input.validity.valid), false);
+  await endpoint.fill("https://models.example.test/v1/");
+  await endpoint.press("Tab");
+  assert.equal(await choice.isVisible(), false);
+  assert.equal(await model.isVisible(), true);
+  assert.equal(await model.evaluate((input) => input.required), true);
+  await model.fill("vendor/model-id");
+  await model.press("Tab");
+  const secret = await createModelCredentialSecret(page, "custom-endpoint-key");
+  const saved = page.waitForResponse(
+    (response) =>
+      response.url() === `${fixture.origin}/namespaces/${namespace.id}/agents` &&
+      response.request().method() === "POST",
+  );
+  await page.getByRole("button", { name: "Create Agent" }).click();
+  const response = await saved;
+  assert.equal(response.status(), 201);
+  const agent = (await response.json()).data;
+  assert.deepEqual(agent.harnessAuth, { method: "api_key", source: secret.ref });
+  const configuration = await fixture.request(
+    "GET",
+    `/namespaces/${namespace.id}/configurations/${agent.configurationId}`,
+  );
+  assert.equal(configuration.data.values.agents.defaults.model, "codex/vendor/model-id");
+  assert.equal(
+    configuration.data.values.models.providers.codex.baseUrl,
+    "https://models.example.test/v1",
+  );
+  assert.equal(configuration.data.values.models.providers.codex.api, "openai-responses");
+  assert.equal(
+    JSON.stringify(configuration.data).includes("custom-endpoint-key"),
+    false,
+    "model key must remain in the existing Secret binding",
+  );
+  assert.equal(
+    pathRequests(requests, "GET", `/namespaces/${namespace.id}/agents/models`).length,
+    0,
+  );
+});
+
+test("Agent creation saves a custom HTTPS endpoint for Embedded OpenClaw", async (t) => {
+  const fixture = await createConsoleAppFixture(t);
+  await fixture.bootstrap();
+  const namespace = await fixture.createNamespace("Embedded custom model endpoint", {
+    ready: true,
+  });
+  const { page } = await newPage(t, fixture);
+  await routeInstallationWithoutProvisioning(page, fixture);
+  await login(page, fixture, `/console/agents/new?namespace=${namespace.id}`);
+  await page.getByRole("button", { name: "Start with default Preset" }).click();
+  await page.getByLabel("Harness", { exact: true }).selectOption("openclaw");
+  await page.getByLabel("Agent name").fill("Embedded custom endpoint Agent");
+  const endpoint = page.getByLabel("OpenAI-compatible endpoint (optional)", { exact: true });
+  const choice = page.getByLabel("Model", { exact: true });
+  const model = page.getByLabel("Model ID", { exact: true });
+  await endpoint.fill("https://models.example.test/v1");
+  await endpoint.press("Tab");
+  assert.equal(await choice.isVisible(), false);
+  assert.equal(await model.isVisible(), true);
+  await model.fill("vendor/model-id");
+  await model.press("Tab");
+  const secret = await createModelCredentialSecret(page, "embedded-custom-endpoint-key");
+  const saved = page.waitForResponse(
+    (response) =>
+      response.url() === `${fixture.origin}/namespaces/${namespace.id}/agents` &&
+      response.request().method() === "POST",
+  );
+  await page.getByRole("button", { name: "Create Agent" }).click();
+  const response = await saved;
+  assert.equal(response.status(), 201);
+  const agent = (await response.json()).data;
+  assert.deepEqual(agent.harnessAuth, { method: "api_key", source: secret.ref });
+  const configuration = await fixture.request(
+    "GET",
+    `/namespaces/${namespace.id}/configurations/${agent.configurationId}`,
+  );
+  const values = configuration.data.values;
+  assert.equal(values.agents.defaults.model, "openai/vendor/model-id");
+  assert.equal(values.models.providers.openai.baseUrl, "https://models.example.test/v1");
+  assert.equal(values.models.providers.openai.api, "openai-responses");
+  assert.equal(values.models.providers.openai.models[0].id, "vendor/model-id");
+  assert.equal("contextWindow" in values.models.providers.openai.models[0], false);
+  assert.equal("maxTokens" in values.models.providers.openai.models[0], false);
+  assert.equal("cost" in values.models.providers.openai.models[0], false);
+  assert.equal(
+    JSON.stringify(configuration.data).includes("embedded-custom-endpoint-key"),
+    false,
+    "model key must remain in the existing Secret binding",
+  );
+});
+
 test("Agent creation can return from manual model entry to the list and save the selected model", async (t) => {
   const fixture = await createConsoleAppFixture(t);
   await fixture.bootstrap();

@@ -36,3 +36,6 @@ each story at 1440 and at 390.
    focus. Save again: the same error, no bubble. Reload AGENTS.md clears it.
 10. With a screen reader, focus each field with an error: it reads the label,
     then the error and the help.
+11. Open **Pages / Create Agent / Codex compatible endpoint**. Confirm the endpoint field appears, its help names the API-key destination, the static model list hides, and Model ID is required.
+12. Open **Pages / Create Agent / Embedded OpenClaw compatible endpoint**. Confirm the same endpoint and manual-model behavior for Embedded OpenClaw.
+13. Open **Pages / Create Agent / Compatible endpoint after authentication switch**. Switch Authentication method to Service Accounts, then back to API key. Confirm the endpoint field is visible and enabled.

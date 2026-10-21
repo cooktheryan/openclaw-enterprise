@@ -12,6 +12,18 @@ export const FormNamespaceBecomesReady = story("createFormNamespaceBecomesReady"
 export const FormNamespaceFailed = story("createFormNamespaceFailed");
 export const FormNamespaceMissing = story("createFormNamespaceMissing");
 export const CreateForm = { ...story("createForm"), name: "OpenAI with Codex harness" };
+export const CreateCodexCompatibleEndpoint = {
+  ...story("createCodexCompatibleEndpoint"),
+  name: "Codex compatible endpoint",
+};
+export const CreateOpenClawCompatibleEndpoint = {
+  ...story("createOpenClawCompatibleEndpoint"),
+  name: "Embedded OpenClaw compatible endpoint",
+};
+export const CreateEndpointAfterAuthenticationSwitch = {
+  ...story("createEndpointAfterAuthenticationSwitch"),
+  name: "Compatible endpoint after authentication switch",
+};
 export const CreateInvalidConfiguration = {
   ...story("createInvalidConfiguration"),
   name: "Invalid Configuration JSON",

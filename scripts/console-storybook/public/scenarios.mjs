@@ -1422,6 +1422,59 @@ export const scenarios = {
       "Choose Reset template and confirm to restore the standard runtime settings for the selected model.",
     ],
   },
+  createCodexCompatibleEndpoint: {
+    group: "Pages/Create Agent",
+    name: "Codex compatible endpoint",
+    path: create,
+    actions: [
+      ...form,
+      { selector: "#agent-name", value: "Codex compatible endpoint" },
+      { selector: "#model-endpoint", value: "https://models.example.test/v1" },
+      { selector: "#agent-model-manual", value: "vendor/model-id" },
+      ...createModelSecret("storybook-model-api-key"),
+    ],
+    description:
+      "Dedicated Codex uses a manually entered model ID with the selected OpenAI-compatible endpoint.",
+    steps: [
+      "Enter an HTTPS endpoint ending in /v1. Confirm the static OpenAI model list hides and Model ID becomes required.",
+      "Confirm the help tells you to check and trust the destination before the Agent sends its API key.",
+    ],
+  },
+  createOpenClawCompatibleEndpoint: {
+    group: "Pages/Create Agent",
+    name: "Embedded OpenClaw compatible endpoint",
+    path: create,
+    actions: [
+      ...form,
+      { selector: "#agent-harness", value: "openclaw" },
+      { selector: "#agent-name", value: "OpenClaw compatible endpoint" },
+      { selector: "#model-endpoint", value: "https://models.example.test/v1" },
+      { selector: "#agent-model-manual", value: "vendor/model-id" },
+      ...createModelSecret("storybook-model-api-key"),
+    ],
+    description:
+      "Embedded OpenClaw uses its OpenAI provider with a manually entered compatible model ID.",
+    steps: [
+      "Switch Harness to OpenClaw and keep Embedded execution.",
+      "Enter an HTTPS endpoint ending in /v1 and a model ID. Confirm the static OpenAI list hides and the API-key destination help stays visible.",
+    ],
+  },
+  createEndpointAfterAuthenticationSwitch: {
+    group: "Pages/Create Agent",
+    name: "Compatible endpoint after authentication switch",
+    path: create,
+    actions: [
+      ...form,
+      { selector: "#agent-auth-method", value: "codex_pat" },
+      { selector: "#agent-auth-method", value: "api_key" },
+    ],
+    description:
+      "The compatible endpoint field returns enabled when the creator switches back to API-key authentication.",
+    steps: [
+      "Switch Authentication method to Service Accounts, then back to OpenAI API key.",
+      "Confirm the endpoint field is visible and enabled.",
+    ],
+  },
   createInvalidConfiguration: {
     group: "Pages/Create Agent",
     name: "Invalid Configuration JSON",
