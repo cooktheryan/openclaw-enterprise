@@ -72,17 +72,19 @@ Configuration; saved-Configuration and pending-request locks govern both directi
 
 `supportsModelEndpoint` shows the optional endpoint for OpenAI API-key
 authentication with Dedicated Codex or Embedded OpenClaw. A nonblank value
-requires a manual model ID. `validateModelEndpoint` runs when controls update,
-including after a draft restores its fields. It accepts HTTPS `/v1` URLs without
-user info, query, or fragment. `configurationTemplate` writes the URL to
+requires a manual model ID and clears a prior selection. `validateModelEndpoint`
+runs when controls update, including after a draft restores its fields. It
+accepts HTTPS `/v1` URLs without user info, query, or fragment. The form does not
+request a model catalog. `configurationTemplate` writes the URL to
 `models.providers.codex.baseUrl` for Codex or `models.providers.openai.baseUrl`
-for OpenClaw; the key stays in the existing Secret binding. The field returns
-enabled when the creator switches back to a supported authentication method.
-Kubernetes `requireAgentOpenAiEndpoint` rejects unsupported values at
-Configuration admission. `pluginRuntimeSnapshot` uses a custom Dedicated Codex
-Agent endpoint before the Installation endpoint and normalizes it before it
-builds runtime settings. Embedded OpenClaw reads its provider URL from the
-Agent's Configuration.
+for OpenClaw; the key stays in the existing Secret binding. Blank Codex input
+keeps the Installation endpoint fallback. The field returns enabled when the
+creator switches back to API-key authentication. Kubernetes
+`requireAgentOpenAiEndpoint` rejects unsupported values at Configuration
+admission. `pluginRuntimeSnapshot` uses a custom Dedicated Codex Agent endpoint
+before the Installation endpoint and normalizes it before it builds runtime
+settings. Embedded OpenClaw reads its provider URL from the Agent's
+Configuration.
 
 `configurationTemplate` enables Control UI with loopback origins on port 18789.
 Compute supplies gateway authentication; Presets replace the starter unchanged.

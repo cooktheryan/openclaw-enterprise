@@ -839,7 +839,13 @@ export async function prepareQaPreset(f, presetName) {
   }
 }
 
-export async function createQaAgent(f, presetName, browserOrigin, nameSuffix = "") {
+export async function createQaAgent(
+  f,
+  presetName,
+  browserOrigin,
+  nameSuffix = "",
+  { openAiCompatibleEndpoint = false } = {},
+) {
   assert.ok(!f.retained, "unresolved repository cleanup prevents new Agent work");
   // The Preset list returns summaries; the exact Preset carries the template.
   const selected = f.presets.find((value) => value.name === `Standard ${presetName}`);
@@ -847,18 +853,33 @@ export async function createQaAgent(f, presetName, browserOrigin, nameSuffix = "
   assert.equal(selected.namespaceId, f.namespace.id, "Preset must belong to the QA Namespace");
   const preset = await f.api("GET", `/namespaces/${selected.namespaceId}/presets/${selected.id}`);
   const codex = presetName === "Codex";
-  const credential = await protectedText(
-    process.env[codex ? "OCC_TEST_QA_CODEX_TOKEN_FILE" : "OCC_TEST_QA_OPENAI_KEY_FILE"],
-    "model credential",
-  );
-  const model =
-    process.env[codex ? "OCC_TEST_QA_CODEX_MODEL" : "OCC_TEST_QA_OPENAI_MODEL"] || "gpt-6-luna";
+  const credentialFile = openAiCompatibleEndpoint
+    ? "OCC_TEST_QA_OPENAI_KEY_FILE"
+    : codex
+      ? "OCC_TEST_QA_CODEX_TOKEN_FILE"
+      : "OCC_TEST_QA_OPENAI_KEY_FILE";
+  const credential = await protectedText(process.env[credentialFile], "model credential");
+  const modelEnvironment = openAiCompatibleEndpoint
+    ? "OCC_TEST_QA_OPENAI_MODEL"
+    : codex
+      ? "OCC_TEST_QA_CODEX_MODEL"
+      : "OCC_TEST_QA_OPENAI_MODEL";
+  const model = process.env[modelEnvironment] || "gpt-6-luna";
   const rendered = renderPresetTemplate(preset.template, {
     name: `qa-${f.suffix}-${presetName}${nameSuffix}`,
     model,
     modelSecret: "provided-through-secret-api",
   });
   const values = rendered.configuration.values;
+  if (openAiCompatibleEndpoint) {
+    const provider = codex ? "codex" : "openai";
+    const endpoint = process.env.OCC_TEST_QA_OPENAI_BASE_URL ?? "https://api.openai.com/v1";
+    assert.ok(
+      values.models?.providers?.[provider],
+      provider + " provider must exist in the Preset",
+    );
+    values.models.providers[provider].baseUrl = endpoint;
+  }
   assert.equal(
     f.configuration.drivers.plugin?.id,
     codex ? "codex-plugin" : "occ-plugin",
@@ -879,7 +900,7 @@ export async function createQaAgent(f, presetName, browserOrigin, nameSuffix = "
     value: credential,
   });
   const auth = {
-    method: codex ? "codex_pat" : "api_key",
+    method: codex && !openAiCompatibleEndpoint ? "codex_pat" : "api_key",
     source: { kind: "secret", namespaceId: f.namespace.id, id: secret.id },
   };
   const agent = await f.api("POST", `/namespaces/${f.namespace.id}/agents`, {

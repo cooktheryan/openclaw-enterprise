@@ -139,6 +139,9 @@ Dedicated Harnesses use ServiceAccounts separate from their Gateway. Compute own
 `apps/controller/src/drivers/compute/kubernetes/index.ts:nativeRuntimeConfiguration`
 projects admitted OpenAI models and an environment SecretRef into canonical
 `models.providers.openai`.
+Embedded OpenClaw reads its configured `models.providers.openai.baseUrl` and
+the selected model ID through that provider. A Create Agent custom endpoint is
+stored in this Agent Configuration; its key remains the existing Harness Secret.
 `apps/controller/src/drivers/compute/kubernetes/runtime-entrypoints.ts:NATIVE_WORKER_ENTRYPOINT`
 writes private capacity/isolation settings and Driver-provided `OPENCLAW_WORKSPACE_DIR`.
 `apps/controller/src/drivers/sandbox/openshell.ts:configureAgent` pins default/main workspace to its data mount; file transfer uses that root absent an endpoint override. Node-local snapshots provide models/credentials and authorized workspaces, without an inference file, grant catalog or retired `nativeInferenceConfig`.
@@ -164,10 +167,14 @@ more claim leases. Failed preparation or preparing/activating that predecessor
 clears its record. New exclusive versions supersede old reconciliation/maintenance
 without rollback; see
 [production version stages](../reference/drivers/compute.md#production-revision-stages).
-For dedicated Codex API-key auth, `pluginRuntimeSnapshot` in
-`apps/controller/src/drivers/compute/kubernetes/index.ts` selects the bound source
-endpoint before `runtime.codexModelBaseUrl`.
-`apps/controller/src/drivers/openai-endpoint.ts:normalizeOpenAiBaseUrl` normalizes both sources.
+For Dedicated Codex API-key auth, `pluginRuntimeSnapshot` in
+`apps/controller/src/drivers/compute/kubernetes/index.ts` selects the endpoint
+from the frozen Agent Configuration before `runtime.codexModelBaseUrl`. The
+Installation setting remains the fallback when the Agent has no endpoint;
+OpenAI is the final default. The model key still comes from the Agent's bound
+Secret and only the Harness receives it.
+`apps/controller/src/drivers/openai-endpoint.ts:normalizeOpenAiBaseUrl` validates
+the endpoint and requires HTTPS with a `/v1` base path.
 `pluginRuntimeConfigMapData` in `apps/controller/src/drivers/compute/plugin-runtime.ts`
 writes the HTTPS Responses endpoint/provider pair to the manifest and `config.toml`.
 `apps/controller/src/drivers/compute/kubernetes/runtime-entrypoints.ts:probeCodexAuthentication`

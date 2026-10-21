@@ -54,6 +54,14 @@ OpenClaw selects `openai-compatible` and ID `vendor/organization/model`, preserv
 fallback order, metadata and policies. Stored Configuration, version and probe
 model remain unchanged.
 
+For OpenAI API-key Agents, Embedded OpenClaw reads its endpoint from the Agent's
+`models.providers.openai.baseUrl`. Dedicated Codex reads
+`models.providers.codex.baseUrl`, then falls back to the Installation's
+`runtime.codexModelBaseUrl`, then OpenAI. The Create Agent endpoint field does
+not configure provider-fenced Dedicated native OpenClaw. See the [Create Agent
+reference](console/create-and-deploy.md#create-an-agent) for endpoint scope,
+validation, and key-destination disclosure.
+
 The resolver selects OpenClaw without a model candidate, or for an unambiguous
 built-in provider with no runtime policy, custom provider, or plugin routing.
 `openai`, `codex`, explicitly configured providers, and plugin-routed providers

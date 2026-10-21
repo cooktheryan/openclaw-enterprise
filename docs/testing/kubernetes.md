@@ -172,6 +172,23 @@ For custom provider and image settings see the test's
 Transcript persistence requires a runtime with SQLite transcripts. A version
 number alone does not establish storage support.
 
+To qualify a per-Agent endpoint, set `OCC_TEST_AGENT_MODEL_BASE_URL` to its HTTPS
+`/v1` URL and `OCC_TEST_OPENAI_MODEL` to the endpoint's model ID. The value in
+`OPENAI_API_KEY` must be accepted by that endpoint. The two selected real-runtime
+cases create Agents through the regular workflow and make a model turn through
+Embedded OpenClaw and Dedicated Codex:
+
+```sh
+OCC_TEST_HARNESS_K3D_REAL=1 OCC_TEST_AGENT_MODEL_BASE_URL=https://models.example.test/v1 \
+  OCC_TEST_OPENAI_MODEL=vendor/model-id OCC_TEST_SLACK_LIVE=0 \
+  node --env-file="$TEST_ENV_FILE" --test \
+  --test-name-pattern='per-Agent OpenAI-compatible endpoint' \
+  tests/integration/harness-topology-k3d-real.test.mjs
+```
+
+Use a test credential for a local compatible server. Do not send the OpenAI key
+to a local model server or a tunnel unless that key is intended for that service.
+
 Gateway and Harness resources use separate managed namespaces. Default fixture
 placement does not prove production node-pool isolation. Use the separate
 [Slack](slack.md) and [observability](local.md#kubernetes-observability-acceptance)

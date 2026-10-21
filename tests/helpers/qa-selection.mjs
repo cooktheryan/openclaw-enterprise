@@ -6,6 +6,7 @@ const scenarioPresets = {
   "git-full": ["OpenClaw", "Codex"],
   "git-read": ["Codex"],
   slack: ["Codex"],
+  "compatible-endpoint": ["OpenClaw", "Codex"],
 };
 
 // One selection contract serves local execution and hosted credential setup.
@@ -51,9 +52,22 @@ export function selectQaMatrix(env = process.env) {
   );
   const activeScenarios = [...new Set(cells.flatMap((cell) => cell.scenarios))];
   const repository = activeScenarios.some((name) => name.startsWith("git-"));
-  const requiredEnv = activePresets.map((name) =>
-    name === "Codex" ? "OCC_TEST_QA_CODEX_TOKEN_FILE" : "OCC_TEST_QA_OPENAI_KEY_FILE",
-  );
+  const requiredEnv = [];
+  if (
+    activePresets.includes("Codex") &&
+    activeScenarios.some(
+      (name) => name !== "compatible-endpoint" && scenarioPresets[name].includes("Codex"),
+    )
+  ) {
+    requiredEnv.push("OCC_TEST_QA_CODEX_TOKEN_FILE");
+  }
+  if (
+    activeScenarios.includes("compatible-endpoint") ||
+    (activePresets.includes("OpenClaw") &&
+      activeScenarios.some((name) => scenarioPresets[name].includes("OpenClaw")))
+  ) {
+    requiredEnv.push("OCC_TEST_QA_OPENAI_KEY_FILE");
+  }
   if (activeScenarios.includes("calendar")) {
     requiredEnv.push("OCC_TEST_CODEX_CALENDAR_TOOL_NAME", "OCC_TEST_CODEX_CALENDAR_RESULT_EXPECT");
   }

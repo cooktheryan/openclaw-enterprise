@@ -39,6 +39,10 @@ import { boundedTeardown } from "../helpers/kubernetes-real.mjs";
 // Run them newest-first, each bounded and all attempted (finding 1711).
 const topologyTeardown = (testContext) =>
   boundedTeardown(testContext, { label: "production topology teardown" });
+const compatibleEndpointSkip =
+  process.env.OCC_TEST_AGENT_MODEL_BASE_URL === undefined
+    ? "Set OCC_TEST_AGENT_MODEL_BASE_URL to a qualified HTTPS /v1 endpoint and run the selected production k3d suite."
+    : requiresProductionCluster.skip;
 
 test(
   "candidate dedicated Skill source uploads honor default and denied node-write policy",
@@ -161,6 +165,50 @@ test(
     await assertLegacyModelSecretBindingDenied(topology);
     process.stderr.write("k3d dedicated: retained state and Pod replacement passed.\n");
     await assertDedicatedToEmbeddedCutover(context, topology);
+  },
+);
+
+test(
+  "production Dedicated Codex uses a per-Agent OpenAI-compatible endpoint for a real model turn",
+  { skip: compatibleEndpointSkip, timeout: 1_200_000 },
+  async (testContext) => {
+    const { context } = topologyTeardown(testContext);
+    // Keep the Installation fallback unset so only the Agent Configuration can select this URL.
+    const topology = await arrangeProductionTopology(context, "dedicated", undefined, {
+      nativeOptions: { modelBaseUrl: process.env.OCC_TEST_AGENT_MODEL_BASE_URL },
+    });
+    const configuration = await topology.request(
+      "GET",
+      `/namespaces/${topology.namespaceId}/configurations/${topology.agent.configurationId}`,
+    );
+    assert.equal(configuration.status, 200);
+    assert.equal(
+      configuration.data.values.models.providers.codex.baseUrl,
+      process.env.OCC_TEST_AGENT_MODEL_BASE_URL,
+    );
+    await assertActualModelTurn(topology);
+  },
+);
+
+test(
+  "production Embedded OpenClaw uses a per-Agent OpenAI-compatible endpoint for a real model turn",
+  { skip: compatibleEndpointSkip, timeout: 900_000 },
+  async (testContext) => {
+    const { context } = topologyTeardown(testContext);
+    // The endpoint lives in the Agent's OpenAI provider while its key stays in the Secret binding.
+    const topology = await arrangeProductionTopology(context, "embedded", undefined, {
+      nativeOptions: { modelBaseUrl: process.env.OCC_TEST_AGENT_MODEL_BASE_URL },
+    });
+    const configuration = await topology.request(
+      "GET",
+      `/namespaces/${topology.namespaceId}/configurations/${topology.agent.configurationId}`,
+    );
+    assert.equal(configuration.status, 200);
+    assert.equal(
+      configuration.data.values.models.providers.openai.baseUrl,
+      process.env.OCC_TEST_AGENT_MODEL_BASE_URL,
+    );
+    await assertActualModelTurn(topology);
   },
 );
 

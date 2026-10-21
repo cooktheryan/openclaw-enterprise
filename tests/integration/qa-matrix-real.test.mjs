@@ -114,7 +114,9 @@ test(
                         "preset deployment and supported authentication",
                         async () => {
                           assert.ok(ready, "blocked by preset preparation failure");
-                          return createQaAgent(f, preset, browser?.nativeOrigin, suffix);
+                          return createQaAgent(f, preset, browser?.nativeOrigin, suffix, {
+                            openAiCompatibleEndpoint: name === "compatible-endpoint",
+                          });
                         },
                       );
                       await work(agent, (title, action) =>
@@ -206,6 +208,46 @@ test(
                         async () => {
                           assert.ok(browser, "blocked by browser setup failure");
                           await browser.verify(agent);
+                        },
+                      );
+                    },
+                  ],
+                  [
+                    "compatible-endpoint",
+                    async (agent, step) => {
+                      await step(
+                        "per-Agent HTTPS endpoint and Secret-backed OpenAI-compatible model turn",
+                        async () => {
+                          const provider = preset === "Codex" ? "codex" : "openai";
+                          const endpoint =
+                            process.env.OCC_TEST_QA_OPENAI_BASE_URL ?? "https://api.openai.com/v1";
+                          const configuration = await f.api(
+                            "GET",
+                            "/namespaces/" +
+                              f.namespace.id +
+                              "/configurations/" +
+                              agent.configuration.id,
+                          );
+                          assert.equal(
+                            configuration.values.models.providers[provider].baseUrl,
+                            endpoint,
+                          );
+                          const gateway = await f.gatewayUrl(agent);
+                          try {
+                            await assertGatewayModelTurn({
+                              gatewayUrl: gateway.url,
+                              gatewayPassword: gateway.gatewayPassword,
+                              nonce: "QA_COMPATIBLE_ENDPOINT_" + randomUUID(),
+                              secrets: [
+                                await protectedText(
+                                  process.env.OCC_TEST_QA_OPENAI_KEY_FILE,
+                                  "OpenAI-compatible endpoint credential",
+                                ),
+                              ],
+                            });
+                          } finally {
+                            await gateway.close();
+                          }
                         },
                       );
                     },

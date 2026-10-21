@@ -179,9 +179,16 @@ test("QA selection keeps prerequisite credentials and reports omitted coverage",
       { cell: "kubernetes/Codex", scenarios: ["model-ui", "calendar"] },
     ],
   );
-  assert.deepEqual(selected.cells[1].unselected, ["git-full", "git-read", "slack"]);
+  assert.deepEqual(selected.cells[1].unselected, [
+    "git-full",
+    "git-read",
+    "slack",
+    "compatible-endpoint",
+  ]);
   assert.deepEqual(selected.cells[0].notApplicable, ["calendar", "git-read", "slack"]);
-  assert.throws(() => validateQaInputs(selected, {}), /OPENAI_KEY_FILE is required/);
+  assert.ok(selected.requiredEnv.includes("OCC_TEST_QA_CODEX_TOKEN_FILE"));
+  assert.ok(selected.requiredEnv.includes("OCC_TEST_QA_OPENAI_KEY_FILE"));
+  assert.throws(() => validateQaInputs(selected, {}), /CODEX_TOKEN_FILE is required/);
   assert.throws(
     () => selectQaMatrix({ OCC_TEST_QA_SCENARIOS: "model-ui,typo" }),
     /invalid QA scenario/,
@@ -198,8 +205,16 @@ test("QA selection keeps prerequisite credentials and reports omitted coverage",
   assert.ok(!calendar.requiredEnv.includes("OCC_TEST_QA_OPENAI_KEY_FILE"));
   assert.deepEqual(calendar.cells[0].scenarios, []);
   const openclaw = selectQaMatrix({ OCC_TEST_QA_PRESET: "OpenClaw" });
-  assert.deepEqual(openclaw.cells[0].scenarios, ["model-ui", "git-full"]);
+  assert.deepEqual(openclaw.cells[0].scenarios, ["model-ui", "git-full", "compatible-endpoint"]);
   assert.ok(!openclaw.requiredEnv.some((name) => /CODEX|SLACK|CALENDAR/.test(name)));
+  const compatibleEndpoint = selectQaMatrix({
+    OCC_TEST_QA_SCENARIOS: "compatible-endpoint",
+    OCC_TEST_QA_PRESET: "Codex",
+  });
+  assert.deepEqual(compatibleEndpoint.requiredEnv, ["OCC_TEST_QA_OPENAI_KEY_FILE"]);
+  assert.ok(
+    compatibleEndpoint.cells.every((cell) => cell.scenarios.includes("compatible-endpoint")),
+  );
   const full = selectQaMatrix({});
   assert.equal(full.scope, "full");
   assert.ok(full.repository);

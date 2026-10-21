@@ -56,6 +56,14 @@ block direct Secret-backed model and environment projection.
    that endpoint. A custom Agent endpoint takes precedence over the Installation
    endpoint for Dedicated Codex.
    No model is preselected.
+   For Embedded OpenClaw or Dedicated Codex with OpenAI API-key authentication,
+   you can enter an optional **OpenAI-compatible endpoint**. Leave it blank to
+   use OpenAI; Dedicated Codex uses the Installation endpoint when configured.
+   A custom endpoint must use HTTPS and a base path ending in `/v1`. Enter its
+   model ID manually; OCE does not discover its catalog. Changing the endpoint
+   clears the selected model. The Agent sends its bound API key to the endpoint.
+   Check the URL and trust its operator before saving. HTTPS protects the
+   connection but does not establish trust in that operator.
 4. Confirm Installation, credential, and runtime support for the model. Primary
    and fallback models must share a supported provider and Harness. For custom settings,
    open **Advanced settings**. Selection changes preserve unrelated JSON edits;

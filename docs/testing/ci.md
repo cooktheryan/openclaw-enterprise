@@ -204,13 +204,14 @@ OCC_TEST_QA_MATRIX=1 node --env-file="$TEST_ENV_FILE" \
 
 #### Scenarios
 
-| Scenario   | In advisory | Presets         | Checks                                                            |
-| ---------- | ----------- | --------------- | ----------------------------------------------------------------- |
-| `model-ui` | Yes (Codex) | OpenClaw, Codex | Real model turn and native browser response.                      |
-| `git-full` | No          | OpenClaw, Codex | Clone, edit, commit, push, open/verify a PR, dispose credentials. |
-| `git-read` | No          | Codex           | Reject read-only push and dispose credentials.                    |
-| `calendar` | Yes (Codex) | Codex           | Successful Calendar read, approvals and tool restrictions.        |
-| `slack`    | No          | Codex           | Threaded reply and new root message.                              |
+| Scenario              | In advisory | Presets         | Checks                                                             |
+| --------------------- | ----------- | --------------- | ------------------------------------------------------------------ |
+| `model-ui`            | Yes (Codex) | OpenClaw, Codex | Real model turn and native browser response.                       |
+| `compatible-endpoint` | No          | OpenClaw, Codex | Per-Agent OpenAI-compatible endpoint and Secret-backed model turn. |
+| `git-full`            | No          | OpenClaw, Codex | Clone, edit, commit, push, open/verify a PR, dispose credentials.  |
+| `git-read`            | No          | Codex           | Reject read-only push and dispose credentials.                     |
+| `calendar`            | Yes (Codex) | Codex           | Successful Calendar read, approvals and tool restrictions.         |
+| `slack`               | No          | Codex           | Threaded reply and new root message.                               |
 
 `OCC_TEST_QA_INSTALLATION` accepts `all` (default), `compose`, `kubernetes`;
 `OCC_TEST_QA_PRESET` accepts `all` (default), `OpenClaw`, `Codex`.
@@ -234,6 +235,7 @@ are under [integration environments](#environments).
 | Scenario/preset           | Inputs                                                                                                                                                                                 |
 | ------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | OpenClaw model            | `OCC_TEST_QA_OPENAI_KEY_FILE`                                                                                                                                                          |
+| Compatible endpoint       | `OCC_TEST_QA_OPENAI_KEY_FILE`; optional `OCC_TEST_QA_OPENAI_BASE_URL` (defaults to `https://api.openai.com/v1`)                                                                        |
 | Codex, including Calendar | `OCC_TEST_QA_CODEX_TOKEN_FILE`: authorized service-account PAT                                                                                                                         |
 | Git                       | `OCC_TEST_QA_REPOSITORY_AUTHORIZED=1`, `OCC_TEST_QA_REPOSITORY_INPUT_DIRECTORY`, and `OCC_TEST_QA_GITHUB_OBSERVER_TOKEN_FILE` or absolute managed `OCC_TEST_QA_GITHUB_OBSERVER_BINARY` |
 | Calendar                  | `OCC_TEST_CODEX_CALENDAR_TOOL_NAME`, `OCC_TEST_CODEX_CALENDAR_RESULT_EXPECT`: harmless read and successful-result pattern                                                              |

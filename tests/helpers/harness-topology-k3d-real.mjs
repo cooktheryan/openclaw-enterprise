@@ -950,6 +950,10 @@ function nativeConfiguration(harnessId, slack, options = {}) {
   const configuration = createHarnessConfiguration(harnessId, providerModel);
   const provider = harnessId === "codex" ? "codex" : "openai";
   configuration.models.providers[provider].models[0].input = ["text", "image"];
+  const modelBaseUrl = options.modelBaseUrl ?? process.env.OCC_TEST_AGENT_MODEL_BASE_URL;
+  if (modelBaseUrl !== undefined) {
+    configuration.models.providers[provider].baseUrl = modelBaseUrl;
+  }
   if (options.controlUi !== undefined) {
     configuration.gateway.controlUi = options.controlUi;
   }
@@ -2386,7 +2390,8 @@ async function arrangeProductionTopology(testContext, mode, slack, options = {})
   const expectedGatewayModel =
     mode === "dedicated" &&
     harnessId === "codex" &&
-    process.env.OCC_TEST_CODEX_OPENAI_BASE_URL !== undefined
+    (process.env.OCC_TEST_CODEX_OPENAI_BASE_URL !== undefined ||
+      process.env.OCC_TEST_AGENT_MODEL_BASE_URL !== undefined)
       ? `codex/openai-compatible/${providerModel}`
       : modelReference;
   await assertGatewayEffectiveDefaultModel(
@@ -2588,7 +2593,11 @@ async function assertActualModelTurn(topology) {
       nonce,
       secrets: [process.env.OPENAI_API_KEY],
     });
-    if (topology.mode === "dedicated" && process.env.OCC_TEST_CODEX_OPENAI_BASE_URL !== undefined) {
+    if (
+      topology.mode === "dedicated" &&
+      (process.env.OCC_TEST_CODEX_OPENAI_BASE_URL !== undefined ||
+        process.env.OCC_TEST_AGENT_MODEL_BASE_URL !== undefined)
+    ) {
       // A Gateway turn, unlike a direct app-server call, exercises OpenClaw's
       // model resolver. Native records must retain the endpoint provider and full ID.
       const rollouts = (await codexRollouts(topology)).filter(({ text }) => text.includes(nonce));
