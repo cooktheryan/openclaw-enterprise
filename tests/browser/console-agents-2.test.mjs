@@ -1541,37 +1541,34 @@ test("Static model selection survives credential edits and resets for provider o
   );
 });
 
-test(
-  "OpenAI-compatible endpoint is re-enabled after switching back to API key authentication",
-  async (t) => {
-    const passwordPreset = structuredClone(defaultCodexPreset);
-    passwordPreset.template.agent.harnessAuth = {
-      method: "api_key",
-      secret: "synthetic-openai-model-key",
-    };
-    const fixture = await createConsoleAppFixture(t, { defaultPresets: [passwordPreset] });
-    await fixture.bootstrap();
-    const namespace = await fixture.createNamespace("Endpoint authentication", { ready: true });
-    const { page } = await newPage(t, fixture);
-    await routeInstallationWithoutProvisioning(page, fixture);
-    await login(page, fixture, `/console/agents/new?namespace=${namespace.id}`);
-    await page.getByRole("button", { name: "Start with default Preset" }).click();
+test("OpenAI-compatible endpoint is re-enabled after switching back to API key authentication", async (t) => {
+  const passwordPreset = structuredClone(defaultCodexPreset);
+  passwordPreset.template.agent.harnessAuth = {
+    method: "api_key",
+    secret: "synthetic-openai-model-key",
+  };
+  const fixture = await createConsoleAppFixture(t, { defaultPresets: [passwordPreset] });
+  await fixture.bootstrap();
+  const namespace = await fixture.createNamespace("Endpoint authentication", { ready: true });
+  const { page } = await newPage(t, fixture);
+  await routeInstallationWithoutProvisioning(page, fixture);
+  await login(page, fixture, `/console/agents/new?namespace=${namespace.id}`);
+  await page.getByRole("button", { name: "Start with default Preset" }).click();
 
-    const endpoint = page.getByLabel("OpenAI-compatible endpoint (optional)", { exact: true });
-    const authentication = page.getByLabel("Authentication method", { exact: true });
-    assert.equal(await endpoint.isVisible(), true);
-    assert.equal(await endpoint.isEnabled(), true);
-    assert.match(await endpoint.locator("..").textContent(), /trust this destination/u);
+  const endpoint = page.getByLabel("OpenAI-compatible endpoint (optional)", { exact: true });
+  const authentication = page.getByLabel("Authentication method", { exact: true });
+  assert.equal(await endpoint.isVisible(), true);
+  assert.equal(await endpoint.isEnabled(), true);
+  assert.match(await endpoint.locator("..").textContent(), /trust this destination/u);
 
-    await authentication.selectOption("codex_pat");
-    assert.equal(await endpoint.isVisible(), false);
-    assert.equal(await endpoint.isEnabled(), false);
+  await authentication.selectOption("codex_pat");
+  assert.equal(await endpoint.isVisible(), false);
+  assert.equal(await endpoint.isEnabled(), false);
 
-    await authentication.selectOption("api_key");
-    assert.equal(await endpoint.isVisible(), true);
-    assert.equal(await endpoint.isEnabled(), true);
-  },
-);
+  await authentication.selectOption("api_key");
+  assert.equal(await endpoint.isVisible(), true);
+  assert.equal(await endpoint.isEnabled(), true);
+});
 
 test("Agent creation saves a custom HTTPS endpoint and manual model through the Agent API", async (t) => {
   const fixture = await createConsoleAppFixture(t);
