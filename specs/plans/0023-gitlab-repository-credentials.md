@@ -14,7 +14,7 @@ rfc: ../rfcs/0023-gitlab-repository-credentials.md
 
 An authorized Agent can use one GitLab.com project for the approved repository workflow through the Repo capability. GitLab credentials stay in the service. Self-managed GitLab and human-delegated tokens are outside the proposed first release.
 
-The RFC proposes a project service account and draft merge-request creation. Maintainers must resolve its open token-scope and provider-selection decisions before those choices become implementation requirements.
+The RFC proposes a project service account and draft merge-request creation. GitLab service accounts can hold fine-grained PATs, and GitLab documents project permissions for Git and merge-request API operations. The project service-account token endpoint documents coarse scopes; fine-grained token creation for the current user is an experimental GraphQL mutation. Validate an acceptable credential setup and rotation path before implementation.
 
 ## Contract and source touchpoints
 
@@ -24,7 +24,7 @@ The work must extend the existing Repo capability and compose the provider throu
 
 ## Implementation
 
-1. Resolve the GitLab.com credential model, project role, scopes, Free-tier requirement, merge-request operations, and single-provider-per-Installation choice through RFC review. Confirm how the selected model fits static material, expiry, revocation, and operator rotation in the final Credential Proxy and Token Service contracts.
+1. Validate a supported GitLab.com project-service-account flow for creating a fine-grained PAT with project-bound Git and merge-request permissions. Decide whether the experimental GraphQL creation path is acceptable or whether a non-experimental flow is required. Confirm that rotation preserves grants and account for GitLab revoking the old token when it issues the replacement. Resolve the project role, exact API operations, Free-tier service-account quota, and single-provider-per-Installation choice through RFC review. Confirm how the credential fits static material, expiry, revocation, and operator rotation in the final Credential Proxy and Token Service contracts.
 2. Extend the Repo contract only as approved by the RFC. Add GitLab project identity and provider-specific client configuration without accepting Agent-supplied hosts or project IDs. Register and compose GitLabRepoDriver through normal Installation configuration.
 3. Add the GitLab service-side provider client. Bind requests to the configured project ID and canonical path, fix HTTPS origin to gitlab.com, enforce the approved Git methods and API route/method set, and keep the upstream token outside Agent files and logs.
 4. Connect GitLab project discovery and binding to the existing repository-selection caller. Preserve fail-closed behavior when the provider, token, project, or operation is unavailable or unauthorized. Keep GitHub selection working.
@@ -35,20 +35,20 @@ Do not implement a new repository broker as a shortcut if PR #2484 selects the p
 
 ## Verification
 
-| Required outcome                                                                              | Real check and prerequisites                                                        | Result or remaining proof                                       |
-| --------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------- | --------------------------------------------------------------- |
-| Agent uses only the bound GitLab project for allowed clone, fetch, and push operations        | Real Agent workflow with a disposable GitLab.com project and approved token         | Not run; no GitLab account/project was available for this spike |
-| Draft merge request can be created while merge and approval remain denied                     | Same Agent workflow; verify real GitLab API effects                                 | Not run; API route set remains for RFC review                   |
-| Wrong-project, unapproved API route, and missing, expired, or revoked credentials fail closed | Real provider responses plus OCE authorization and audit evidence                   | Not run                                                         |
-| Token remains outside Agent material, logs, and client configuration                          | Inspect delivered files, service logs, and provider request path in the integration | Not run                                                         |
-| GitHub behavior remains available and existing Agent bindings retain their behavior           | Current Repo Driver integration coverage plus targeted regression evidence          | Not run                                                         |
+| Required outcome                                                                              | Real check and prerequisites                                                        | Result or remaining proof                                              |
+| --------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------- | ---------------------------------------------------------------------- |
+| Agent uses only the bound GitLab project for allowed clone, fetch, and push operations        | Real Agent workflow with an authorized GitLab.com project and approved token        | Not run; this spike compared published docs and repository source only |
+| Draft merge request can be created while merge and approval remain denied                     | Same Agent workflow; verify real GitLab API effects                                 | Not run; API route set remains for RFC review                          |
+| Wrong-project, unapproved API route, and missing, expired, or revoked credentials fail closed | Real provider responses plus OCE authorization and audit evidence                   | Not run                                                                |
+| Token remains outside Agent material, logs, and client configuration                          | Inspect delivered files, service logs, and provider request path in the integration | Not run                                                                |
+| GitHub behavior remains available and existing Agent bindings retain their behavior           | Current Repo Driver integration coverage plus targeted regression evidence          | Not run                                                                |
 
 ## Open decisions
 
-- Product maintainers must select a token model and decide whether GitLab.com Free support is required. This blocks the runbook and provider configuration.
-- Credential Proxy maintainers must decide how a static project service-account token enters the final Token Service and how expiry and replacement affect active bindings.
+- Product maintainers must confirm the project-service-account token creation path, exact Git/API grants, and whether GitLab.com Free support is required. This blocks the runbook and provider configuration.
+- Credential Proxy maintainers must decide how a project-service-account PAT enters the final Token Service and how expiry, granular-scope preservation, immediate token replacement, and failed updates affect active bindings.
 - Repo Driver maintainers must confirm the exact GitLab API operations and whether one Installation can select both GitHub and GitLab.
-- An authorized disposable GitLab.com project and service-account credentials are required for live integration proof.
+- An authorized GitLab.com project and project-service-account credentials are required to validate token creation, granular permissions, and the live integration workflow.
 
 ## Delivery record
 
