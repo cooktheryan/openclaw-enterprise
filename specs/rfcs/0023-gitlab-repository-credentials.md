@@ -14,7 +14,7 @@ author: cooktheryan
 
 ## Summary
 
-Add GitLab.com as a selectable provider so an Agent can clone, fetch, push, and create a draft merge request in one approved project without receiving its upstream token. Match the GitHub team runbook with a project-scoped non-human identity, a narrowly granted upstream credential held by the protected service path, a saved project binding, and server-side operation limits. Resolve the exact GitLab token creation and lifecycle path before implementation; the Credential Proxy and Token Service proposed in PR #2484 are not current main behavior.
+Add GitLab.com as a selectable provider for the same repository tasks and access profiles that OCE supports for GitHub. An Agent can clone, fetch, push, and create a draft merge request in one approved project without receiving its upstream token. Match the GitHub team runbook with a project-scoped non-human identity, a narrowly granted upstream credential held by the protected service path, a saved project binding, and server-side operation limits. Resolve the exact GitLab token creation and lifecycle path before implementation; the Credential Proxy and Token Service proposed in PR #2484 are not current main behavior.
 
 ## Motivation
 
@@ -61,17 +61,25 @@ The GitHub runbook uses an organization-owned App installed only on selected rep
 | Bind through the registry and use the normal Agent flow.                         | Bind the project; fix the host to gitlab.com and authorize every request.         |
 | Verify changes and PR creation, then retire and rotate credentials.              | Verify Git and draft MR; deny other operations. Track expiry and rotate safely.   |
 
+### Capability parity with GitHub
+
+Match task outcomes and access profiles, while using GitLab project and merge-request terms. The supported GitLab client must expose only the equivalent bounded operations; `glab` has additional commands that this proposal does not admit. [GitLab's CLI](https://docs.gitlab.com/cli/) provides the relevant project, issue, merge-request, and pipeline commands. Fine-grained Git permissions distinguish project code download from push, and REST grants include project-scoped merge-request reads and creation. [GitLab Git permissions](https://docs.gitlab.com/auth/tokens/fine_grained_access_tokens_other/), [REST permissions](https://docs.gitlab.com/auth/tokens/fine_grained_access_tokens_rest/).
+
+| Profile and GitHub task                                                | GitHub usage                                                        | GitLab usage                                                                                                                                                                                                                                                |
+| ---------------------------------------------------------------------- | ------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `git-read`: inspect project, issues, PRs, diffs, checks                | `gh repo view`, `gh issue list/view`, `gh pr list/view/diff/checks` | [`glab repo view`](https://docs.gitlab.com/cli/repo/view/), [`glab issue list/view`](https://docs.gitlab.com/cli/issue/list/), [`glab mr list/view/diff`](https://docs.gitlab.com/cli/mr/list/), [`glab ci status`](https://docs.gitlab.com/cli/ci/status/) |
+| `git-write`: push branch; create or discuss draft PR; issues read-only | `git push`, `gh pr create --draft`, `gh pr comment`                 | `git push`, [`glab mr create --draft`](https://docs.gitlab.com/cli/mr/create/), [`glab mr note`](https://docs.gitlab.com/cli/mr/note/)                                                                                                                      |
+| `git-full`: add issue creation and comments                            | `gh issue create/comment`                                           | [`glab issue create`](https://docs.gitlab.com/cli/issue/create/), [`glab issue note`](https://docs.gitlab.com/cli/issue/note/)                                                                                                                              |
+
+Use the same opt-in project binding, per-binding profile selection, service-side credential custody, and normal Agent workflow as GitHub. Use an already-pushed source branch; merge-request creation must not push implicitly or create a fork. GitLab command names and setup screens may differ. Do not expand access to merge or approve merge requests, administer projects, or run, retry, or cancel pipelines. Enforce these limits in OCE even when a GitLab role or token allows more.
+
 Service accounts can hold fine-grained PATs: GitLab's API documents `granular_scopes` on rotated service-account tokens. The statement that fine-grained-token enforcement excludes service accounts describes enforcement, not token capability. GitLab documents project-bound Code Download/Push and Merge Request Read/Create permissions. However, its project service-account token endpoint documents coarse scopes; fine-grained PAT creation for the current user is an experimental GraphQL mutation. Validate a supported setup before finalizing the runbook. If this requires a broad bootstrap token, revoke it before binding. Rotation preserves granular grants but revokes the old token when issuing its replacement, so update the protected credential as one controlled operation. [Fine-grained PATs](https://docs.gitlab.com/auth/tokens/fine_grained_access_tokens/), [Git and REST permissions](https://docs.gitlab.com/auth/tokens/fine_grained_access_tokens_other/), [service-account token API](https://docs.gitlab.com/api/service_accounts/), [GraphQL token creation](https://docs.gitlab.com/api/graphql/reference/experimental/mutations/#personalaccesstokencreate).
 
 ### Relationship to Credential Proxy work
 
-Main currently implements the GitHub-specific path. [PR #2484](https://github.com/openclaw/openclaw-enterprise/pull/2484) proposes a protected Credential Proxy and Token Service, including approved static material and per-operation authorization. Its [GitHub implementation](https://github.com/openclaw/openclaw-enterprise/pull/2487) remains open; neither is current main behavior.
+Main currently implements the GitHub-specific path. [PR #2484](https://github.com/openclaw/openclaw-enterprise/pull/2484) proposes a protected Credential Proxy and Token Service with per-operation authorization. Its [GitHub implementation](https://github.com/openclaw/openclaw-enterprise/pull/2487) remains open; neither is current main behavior.
 
-Review GitLab as a separate provider integration against that ownership model: Repo describes Git operations, the provider owns GitLab authentication and project grants, the protected service path authenticates each admitted request, and OCC owns binding approval and withdrawal. A manually created token does not refresh itself. Confirm how operators replace it and how the final Token Service handles expiry and withdrawal. Do not route protected Git through the legacy broker if PR #2484 selects the protected path.
-
-### Research spike findings
-
-This spike compared repository source and GitLab's published docs; it did not run live GitLab operations. Validate token creation and rotation before treating the procedure as an operator runbook.
+Align GitLab with the selected ownership model: Repo describes Git operations, the provider owns GitLab authentication and grants, the protected service path authenticates requests, and OCC owns binding approval and withdrawal. Fit token replacement, expiry, and withdrawal into the final Token Service. Do not route through the legacy broker if PR #2484 selects the protected path.
 
 ### Architecture
 
@@ -91,13 +99,13 @@ flowchart LR
 
 The [implementation plan](../plans/0023-gitlab-repository-credentials.md) tracks the work. Reconcile it with the final Credential Proxy decision from PR #2484 before implementation.
 
-Use the regular Agent workflow against an authorized GitLab.com project. Verify allowed Git operations, draft merge-request creation, wrong-project and disallowed-route denials, missing/expired/revoked credentials, and token non-disclosure. Record the tier, project role, granular permissions, and environment. This spike compared published docs and source only; it provides no live-provider evidence.
+Use the regular Agent workflow against an authorized GitLab.com project. Verify allowed Git operations, draft merge-request creation, wrong-project and disallowed-route denials, missing/expired/revoked credentials, and token non-disclosure. Record the tier, project role, granular permissions, and environment. This spike compared published docs and source; it did not run live GitLab operations.
 
 ## Rationale and alternatives
 
-A project service account keeps contributions under a team-owned, non-human identity and supports GitLab.com Free. Service accounts can hold fine-grained PATs, and those grants can cover project-bound Git and REST API operations. The documented project-service-account API does not describe a stable fine-grained token creation procedure, so validate the provisioning and rotation path before selecting it. OCE must also enforce its own project and operation boundary even when the upstream PAT has narrow grants.
+GitLab.com Free supports project service accounts, and fine-grained permissions can bound project Git and REST operations. The documented service-account API does not describe a stable fine-grained token creation procedure, so validate setup and rotation before selecting this path. OCE must enforce its own project and operation boundary.
 
-Keeping GitHub-only support avoids provider and token lifecycle work, but requires GitLab teams to mirror source or give up repository access. Extending the existing Repo capability gives them the same managed workflow without a second source of truth.
+Support lets teams keep GitLab as their source of truth and retain their review and CI path while using the managed workflow already available for GitHub.
 
 ## Unresolved questions
 
@@ -122,4 +130,3 @@ Keeping GitHub-only support avoids provider and token lifecycle work, but requir
 - [GitLab fine-grained REST API permissions](https://docs.gitlab.com/auth/tokens/fine_grained_access_tokens_rest/)
 - [GitLab service-account token API](https://docs.gitlab.com/api/service_accounts/)
 - [GitLab GraphQL token creation](https://docs.gitlab.com/api/graphql/reference/experimental/mutations/#personalaccesstokencreate)
-- [GitLab GraphQL fine-grained token creation](https://docs.gitlab.com/api/graphql/reference/experimental/mutations/#personalaccesstokencreate)

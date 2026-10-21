@@ -12,7 +12,9 @@ rfc: ../rfcs/0023-gitlab-repository-credentials.md
 
 ## Outcome and scope
 
-An authorized Agent can use one GitLab.com project for the approved repository workflow through the Repo capability. GitLab credentials stay in the service. Self-managed GitLab and human-delegated tokens are outside the proposed first release.
+An authorized Agent can use one GitLab.com project for the same repository tasks and access profiles OCE supports for GitHub, through the Repo capability. GitLab credentials stay in the service. Self-managed GitLab and human-delegated tokens are outside the proposed first release.
+
+Preserve task parity for `git-read` (clone/fetch; inspect project, issues, merge requests, diffs, and pipeline status), `git-write` (read tasks plus branch push and draft merge-request creation/discussion), and `git-full` (write tasks plus issue creation and comments). Keep issue writes disabled in `git-write`. Create merge requests from already-pushed branches with explicit source and target branches; do not add implicit push or fork behavior. Provider-specific command names can differ, but the Agent must not gain merge, approval, project administration, or pipeline-control operations.
 
 The RFC proposes a project service account and draft merge-request creation. GitLab service accounts can hold fine-grained PATs, and GitLab documents project permissions for Git and merge-request API operations. The project service-account token endpoint documents coarse scopes; fine-grained token creation for the current user is an experimental GraphQL mutation. Validate an acceptable credential setup and rotation path before implementation.
 
@@ -35,13 +37,15 @@ Do not implement a new repository broker as a shortcut if PR #2484 selects the p
 
 ## Verification
 
-| Required outcome                                                                              | Real check and prerequisites                                                        | Result or remaining proof                                              |
-| --------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------- | ---------------------------------------------------------------------- |
-| Agent uses only the bound GitLab project for allowed clone, fetch, and push operations        | Real Agent workflow with an authorized GitLab.com project and approved token        | Not run; this spike compared published docs and repository source only |
-| Draft merge request can be created while merge and approval remain denied                     | Same Agent workflow; verify real GitLab API effects                                 | Not run; API route set remains for RFC review                          |
-| Wrong-project, unapproved API route, and missing, expired, or revoked credentials fail closed | Real provider responses plus OCE authorization and audit evidence                   | Not run                                                                |
-| Token remains outside Agent material, logs, and client configuration                          | Inspect delivered files, service logs, and provider request path in the integration | Not run                                                                |
-| GitHub behavior remains available and existing Agent bindings retain their behavior           | Current Repo Driver integration coverage plus targeted regression evidence          | Not run                                                                |
+| Required outcome                                                                                         | Real check and prerequisites                                                        | Result or remaining proof                                              |
+| -------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------- | ---------------------------------------------------------------------- |
+| Agent uses only the bound GitLab project for allowed clone, fetch, and push operations                   | Real Agent workflow with an authorized GitLab.com project and approved token        | Not run; this spike compared published docs and repository source only |
+| `git-read` and `git-write` match GitHub's read and branch/MR tasks, with issues read-only in `git-write` | Real Agent workflow; verify per-profile Git, API, and denied write effects          | Not run; API route set remains for RFC review                          |
+| `git-full` adds the same supported issue creation and comment tasks as GitHub                            | Same Agent workflow; verify project issue effects                                   | Not run; API route set remains for RFC review                          |
+| Draft merge request can be created while merge and approval remain denied                                | Same Agent workflow; verify real GitLab API effects                                 | Not run; API route set remains for RFC review                          |
+| Wrong-project, unapproved API route, and missing, expired, or revoked credentials fail closed            | Real provider responses plus OCE authorization and audit evidence                   | Not run                                                                |
+| Token remains outside Agent material, logs, and client configuration                                     | Inspect delivered files, service logs, and provider request path in the integration | Not run                                                                |
+| GitHub behavior remains available and existing Agent bindings retain their behavior                      | Current Repo Driver integration coverage plus targeted regression evidence          | Not run                                                                |
 
 ## Open decisions
 
