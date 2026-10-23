@@ -12,9 +12,11 @@ author: cooktheryan
 - **Implementation plan:** [RFC-0024 implementation plan](../plans/0024-openai-compatible-model-endpoints.md)
 - **Related:** [PR #913: Support OpenAI-compatible Codex model endpoints](https://github.com/openclaw/openclaw-enterprise/pull/913), [Create Agent reference](../../docs/reference/console/create-and-deploy.md), [Compute Driver contract](../../docs/reference/drivers/compute.md), [Harness execution](../../docs/reference/harness-execution.md)
 
-## Summary
+## Decision requested
 
-Add an optional OpenAI-compatible endpoint URL to Create Agent. OpenAI is the default endpoint. Dedicated Codex continues to use `runtime.codexModelBaseUrl` as its Installation default when configured; a per-Agent URL overrides it. The existing Compute Agent-provisioning capability response must expose the configured `codexApiKeyBaseUrl` so Create Agent can apply the same precedence when it registers an OpenShell Credential Source. For a custom URL, the user enters the model ID through the existing manual model-entry mode. The saved Configuration must use the selected endpoint and model ID for supported OpenClaw and Codex Agents.
+May an Agent creator who can use a shared model Secret choose the HTTPS provider that receives its key? This proposal grants that authority for Embedded OpenClaw and Dedicated Codex API-key Agents. For example, if a creator selects a shared Secret and enters `https://models.example.test/v1`, that provider receives the key when the Agent makes a model request. Maintainers must decide whether permission to use the Secret is sufficient or whether its owner must also authorize the destination.
+
+An existing OpenShell Credential Source already binds its key to a destination. Selecting that source fixes the endpoint. To use another endpoint with Gateway-backed Codex, the creator must register a new source. For direct Secret delivery, the selected Harness Configuration owns the endpoint. A blank field uses the Installation default for Dedicated Codex when configured, then OpenAI. Embedded OpenClaw defaults to OpenAI. The creator enters the model ID for a custom provider.
 
 ## Motivation
 
@@ -91,7 +93,7 @@ Both paths call `/v1/responses`. The pinned OCE runtime includes OpenClaw's cust
 
 ### Credential, validation, and egress boundaries
 
-The browser saves the URL and model ID; it does not call the endpoint. The proposed authority lets a creator with access to a shared model Secret send its key to any compatible HTTPS endpoint, as in the OpenAI and Anthropic workflows; no separate owner approval is required. HTTPS and URL validation do not establish trust in the endpoint operator. The interface must disclose where the key goes. OpenShell binds a Gateway-delivered key to the source profile's host and base-path prefix, but it does not establish trust in that provider. Validate URLs with the existing OpenAI endpoint rules.
+The browser saves the URL and model ID; it does not call the endpoint. The proposed authority lets a creator with access to a shared model Secret send its key to any compatible HTTPS endpoint, without separate approval from the Secret owner. HTTPS and URL validation do not establish trust in the endpoint operator. The interface must disclose where the key goes. OpenShell binds a Gateway-delivered key to the source profile's host and base-path prefix, but it does not establish trust in that provider. Validate URLs with the existing OpenAI endpoint rules.
 
 The current Compute-generated Agent NetworkPolicy permits IPv4 TCP/443 to `0.0.0.0/0` except `10.0.0.0/8`, `100.64.0.0/10`, `172.16.0.0/12`, `192.168.0.0/16`, and `169.254.0.0/16`. These exclusions cover private, carrier-grade NAT, and link-local ranges, but not every reserved range; `198.18.0.1` remains allowed. Reuse this policy without adding API or worker egress. It does not restrict traffic to the configured hostname; cluster networking must also allow HTTPS. Verify the five denied ranges and selected public endpoint in enforcing k3d. A restricted model proxy remains separate work under `TODO(model-egress-proxy)` and RFC-0017. Dedicated native OpenClaw retains the Credential Gateway's exact-host policy.
 
@@ -138,23 +140,7 @@ flowchart TB
 
 The diagram shows a proposed runtime path. It does not prove endpoint compatibility or deployment egress.
 
-## Likely implementation files
-
-These source owners are likely to change; the implementation plan can refine the list after review.
-
-| Area                                          | Candidate files                                                                                                                                                                                                                                                                             |
-| --------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Create Agent form and model Configuration     | `apps/controller/src/console/agents/create.mts`                                                                                                                                                                                                                                             |
-| Endpoint normalization and validation         | `apps/controller/src/drivers/openai-endpoint.ts`, `apps/controller/src/drivers/compute/kubernetes/index.ts`                                                                                                                                                                                 |
-| Codex endpoint translation                    | `apps/controller/src/drivers/compute/plugin-runtime.ts`, `apps/controller/src/drivers/compute/codex-model-configuration.ts`, `apps/controller/src/drivers/compute/kubernetes/index.ts`, `apps/controller/src/drivers/compute/kubernetes/runtime-entrypoints.ts`                             |
-| Codex default endpoint precedence             | `apps/controller/src/drivers/compute/kubernetes/index.ts`, `docs/guides/deploy/installation-profiles.md`, `docs/reference/drivers/kubernetes-compute.md`, `docs/flows/installation-profile-rendering.md`, `docs/flows/harness-execution-topology.md`                                        |
-| OpenShell API-key delivery                    | `apps/controller/src/console/agents/create.mts` registers the API-key Credential Source; `apps/controller/src/drivers/credential-gateway/openshell.ts` validates `base_url` and builds the endpoint-bound profile                                                                           |
-| Dedicated native OpenClaw credential endpoint | Current Compute rejects custom source endpoints. [PR #2755](https://github.com/openclaw/openclaw-enterprise/pull/2755) proposes that separate runtime extension                                                                                                                             |
-| Console stories and browser workflow          | `scripts/console-storybook/pages-create-agent.stories.ts`, `scripts/console-storybook/public/scenarios.mjs`, `tests/browser/console-agents-2.test.ts`                                                                                                                                       |
-| Runtime integration proof                     | `tests/integration/harness-topology-k3d-real.test.mjs`, `tests/integration/harness-topology-k3d-otel-real.test.mjs`, and relevant Agent workflow integration coverage                                                                                                                       |
-| Codex Installation default capability         | `packages/contracts/src/index.ts`, `packages/contracts/src/api/resources.ts`, `apps/controller/src/index.ts`, and Kubernetes Compute's `agentProvisioning.codexApiKeyBaseUrl`                                                                                                               |
-| Existing Agent model egress                   | `apps/controller/src/drivers/compute/kubernetes/index.ts:agentNetworkPolicies`; this RFC reuses the existing public TCP/443 grant and does not change provider-specific infrastructure                                                                                                      |
-| Current references and flows                  | `docs/reference/console/create-and-deploy.md`, `docs/reference/drivers/kubernetes-compute.md`, `docs/reference/harness-execution.md`, `docs/reference/drivers/openshell-credential-gateway.md`, `docs/flows/platform-console/agent-creation.md`, `docs/flows/harness-execution-topology.md` |
+## Compute capability
 
 This proposal extends the existing `ComputeAgentProvisioningCapabilities` contract with optional `codexApiKeyBaseUrl` and returns it in the authorized `GET /installation` response. It adds no route, model-discovery API, API egress rule, database entity, or credential format. It reuses the existing OpenAI Credential Source and OpenShell provider-profile path for Gateway-backed Dedicated Codex. Create Agent cannot automatically register the source when its caller cannot read Installation capabilities; the existing direct Secret path remains available where the selected Compute Driver permits it.
 
@@ -183,7 +169,6 @@ Use one endpoint field and the Responses API for both API-key workflows. Assess 
 
 ## Decisions and remaining proof
 
-- **Shared Secret destination authority (maintainer decision requested):** Approve or reject the proposal that any creator with access to a shared model Secret may send its key to a compatible HTTPS endpoint without separate owner approval, as in OpenAI and Anthropic API-key workflows. HTTPS does not establish trust in the endpoint operator. Keep the destination disclosure visible before accepting the RFC.
 - **Agent egress:** Reuse the policy above; it does not allowlist the endpoint hostname. A restricted model proxy remains separate work.
 - **Responses API qualification:** Use OpenAI first, then OpenRouter's documented beta Responses endpoint as the first candidate. Its docs do not prove every model works with both Harnesses. Require real streaming Agent turns with a tool call in both before claiming compatibility; record failures by request or stream behavior.
 
