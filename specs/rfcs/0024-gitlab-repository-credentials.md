@@ -14,7 +14,7 @@ author: cooktheryan
 
 ## Summary
 
-Teams that keep source in GitLab must mirror their projects to GitHub or run Agents without repository access. We propose binding an Agent to one GitLab.com project. The selected Credential Proxy would authenticate approved requests with a project service account’s personal access token (PAT). The Agent would receive neither the PAT nor general API access.
+Teams that keep source in GitLab must mirror their projects to GitHub or run Agents without repository access. An Agent with an approved GitLab project must also be able to contribute to an approved GitHub repository in the same Installation and revision. The selected Credential Proxy would authenticate approved requests with a project service account’s personal access token (PAT). The Agent would receive neither the PAT nor general API access.
 
 The design includes opening a draft merge request from an approved branch. Maintainers still need to choose who supplies and rotates the PAT.
 
@@ -26,7 +26,8 @@ The design includes opening a draft merge request from an approved branch. Maint
 
 ## Non-goals
 
-- Self-managed GitLab or configurable upstream hosts.
+- Qualifying self-managed GitLab for this release. A later adapter configuration must support an operator-pinned HTTPS origin, egress policy, and CA trust for an internal GitLab alongside GitHub.com. Agents cannot select or override these trust settings.
+- Selecting among multiple GitHub Apps or organizations on the same host.
 - Human-delegated access as the default team workflow.
 - Merge, approve, or administer merge requests.
 - Giving an Agent a GitLab token or general API access.
@@ -37,9 +38,13 @@ The design includes opening a draft merge request from an approved branch. Maint
 
 ### Provider and project binding
 
-The existing `repo` capability lists approved projects and resolves bindings. The proposed GitLab Repo Driver binds a numeric project ID to its canonical Git path on `https://gitlab.com`. The sender uses the ID for API routes, the path for Git, and the approved ref for pushes. Reject any origin, path, or project ID that differs from the binding. We propose one repository provider per Installation for the first release.
+The existing `repo` capability lists approved projects and resolves bindings. The proposed GitLab Repo Driver binds a numeric project ID to its canonical Git path on `https://gitlab.com`. The sender uses the ID for API routes, the path for Git, and the approved ref for pushes. Reject any origin, path, or project ID that differs from the binding. An operator can configure one GitHub instance and one GitLab instance together. Admission resolves each selected repository to its provider instance, backend, repository ID, and grant. Reject ambiguous selections before opening sessions. Git and API requests select only their bound sender and credential. A missing or revoked grant cannot fall back to the other provider.
 
 Current composition selects GitHub and configures `gh`. Its repository sender admits Git operations and a [draft pull request](../../packages/contracts/src/prepared-github-egress.ts). Its separate installation profile admits GitHub REST and GraphQL. GitLab needs client configuration and a mapping from each approved operation to its Git exchange or API method, route, and request fields.
+
+The [grant](../../packages/contracts/src/repo.ts) already includes provider identity, but the revision records one Driver and the [OpenShell Git route](../../apps/controller/src/drivers/egress-proxy/openshell-git-runtime.ts) accepts exactly one binding. Mixed-provider support requires per-binding routing, approval and withdrawal. Preserve the exclusive GitHub installation-wide profile; use narrowly bound repositories for this case. A runtime that cannot isolate both routes must refuse the combination at admission.
+
+Public GitHub reads are a third path. An explicitly allowed anonymous operation sends no credential, including after a refusal or redirect. [RFC-0020](0020-anonymous-public-github-reads.md) covers bounded public API reads; anonymous Git clone/fetch needs its own approved Git transport and verification.
 
 ### GitLab mapping to the GitHub team runbook
 
@@ -97,6 +102,7 @@ Use one running Agent, the selected Credential Proxy and paired Sandbox, and an 
 
 1. Clone a commit absent locally. Push a known commit to the allowed branch and verify its SHA at GitLab. Open a draft MR and verify its draft status, project, branches, and head commit in GitLab. Drop the reply to a separate create and verify recovery sends no second POST.
 2. Attempt a forbidden push. Verify no upload reaches GitLab. Withdraw the OCE binding while the PAT is still valid. Try a fresh fetch from the same Agent. Verify denial while its conversation still works. Use an observer that saw the allowed Git traffic to confirm zero upstream fetch requests. Record any gap in that observation.
+3. Give the same revision narrow write grants on GitHub and GitLab. Create a draft on each host using its own credential. Withdraw GitLab and prove the next GitLab request is denied while the approved GitHub write still succeeds. Use colliding numeric repository IDs to check isolation. For anonymous Git support, clone a known public GitHub repository without forwarding either credential. Refuse an unauthenticated push. Qualify the internal-host variant by repeating the mixed-provider test against an operator-configured GitLab origin and rejecting an untrusted certificate.
 
 The [implementation plan](../plans/0024-gitlab-repository-credentials.md) covers credential failures and token non-disclosure. This spike ran no live GitLab operations. Stock OpenShell’s refusal of unqualified Git access is a separate result.
 
@@ -110,7 +116,6 @@ Support lets teams keep GitLab as their source of truth and retain their review 
 
 1. **Credential maintainers:** Should GitLab use a live static secret or a prepared-token provider? Which owner handles expiry, replacement, custody, and retirement for the selected source?
 2. **Product maintainers:** Can a supported GitLab.com project-service-account flow create the required fine-grained PAT without an experimental or lingering broad token, and how should rotation preserve its grants without interrupting active bindings?
-3. **Product maintainers:** Is one provider per Installation sufficient, or must one Installation select both GitHub and GitLab projects?
 
 ## References
 
