@@ -16,11 +16,11 @@ author: cooktheryan
 
 Teams that keep source in GitLab must mirror their projects to GitHub or run Agents without repository access. We propose binding an Agent to one GitLab.com project. The selected Credential Proxy would authenticate approved requests with a project service account’s personal access token (PAT). The Agent would receive neither the PAT nor general API access.
 
-Maintainers must choose who supplies and rotates the PAT and whether the first release includes draft merge requests.
+The design includes opening a draft merge request from an approved branch. Maintainers still need to choose who supplies and rotates the PAT.
 
 ## Goals
 
-- Add GitLab.com alongside GitHub. Support Git reads, approved branch pushes, and optionally draft merge requests.
+- Add GitLab.com alongside GitHub. Support Git reads, approved branch pushes, and draft merge-request creation.
 - Authorize each Git or API request for the bound project. Deny missing, expired, or revoked credentials and disallowed operations.
 - Document setup, verification, expiry, rotation, and revocation.
 
@@ -64,7 +64,7 @@ These profiles describe the proposed GitLab tasks. The adapter may use `glab` or
 | `git-write`: push branch; create or discuss draft PR; issues read-only | `git push`, `gh pr create --draft`, `gh pr comment`                 | `git push`, [`glab mr create --draft`](https://docs.gitlab.com/cli/mr/create/), [`glab mr note`](https://docs.gitlab.com/cli/mr/note/)                                                                                                                      |
 | `git-full`: add issue creation and comments                            | `gh issue create/comment`                                           | [`glab issue create`](https://docs.gitlab.com/cli/issue/create/), [`glab issue note`](https://docs.gitlab.com/cli/issue/note/)                                                                                                                              |
 
-If draft creation ships, require explicit, existing source and target branches in the bound project. Reject a missing branch or a foreign `target_project_id` even when the request URL names the bound project. The operation must never push or fork. Merge, approval, project administration, and pipeline control stay denied. [GitLab merge request API](https://docs.gitlab.com/api/merge_requests/#create-a-merge-request)
+For draft creation, the sender builds `POST /projects/:id/merge_requests` from the bound project ID, an approved source branch, an explicit target branch, and a title prefixed with `Draft:`. Both branches must already exist in that project. Reject a missing branch, a foreign `target_project_id`, or unapproved fields before sending the create. This operation cannot push, fork, mark ready, merge, or approve. [Create a merge request](https://docs.gitlab.com/api/merge_requests/#create-a-merge-request) · [Draft titles](https://docs.gitlab.com/user/project/merge_requests/drafts/)
 
 Record the operation ID before the first HTTP write. Keep its receipt when releasing the credential. If the sender proves it wrote no HTTP bytes, record that the create was not sent. If GitLab may have received it, keep the outcome unknown and reconcile the original operation without resubmitting. Confirm creation only from GitLab evidence tied to that operation, project, and both branches.
 
@@ -95,7 +95,7 @@ flowchart TB
 
 Use one running Agent, the selected Credential Proxy and paired Sandbox, and an authorized GitLab.com project. Record the installed versions, tier, project role, and token grants.
 
-1. Clone a commit absent locally. Push a known commit to the allowed branch and verify its SHA at GitLab. If draft creation ships, confirm the draft’s project, branches, and head commit.
+1. Clone a commit absent locally. Push a known commit to the allowed branch and verify its SHA at GitLab. Open a draft MR and verify its draft status, project, branches, and head commit in GitLab. Drop the reply to a separate create and verify recovery sends no second POST.
 2. Attempt a forbidden push. Verify no upload reaches GitLab. Withdraw the OCE binding while the PAT is still valid. Try a fresh fetch from the same Agent. Verify denial while its conversation still works. Use an observer that saw the allowed Git traffic to confirm zero upstream fetch requests. Record any gap in that observation.
 
 The [implementation plan](../plans/0024-gitlab-repository-credentials.md) covers credential failures and token non-disclosure. This spike ran no live GitLab operations. Stock OpenShell’s refusal of unqualified Git access is a separate result.
@@ -110,8 +110,7 @@ Support lets teams keep GitLab as their source of truth and retain their review 
 
 1. **Credential maintainers:** Should GitLab use a live static secret or a prepared-token provider? Which owner handles expiry, replacement, custody, and retirement for the selected source?
 2. **Product maintainers:** Can a supported GitLab.com project-service-account flow create the required fine-grained PAT without an experimental or lingering broad token, and how should rotation preserve its grants without interrupting active bindings?
-3. **Repo Driver maintainers:** Should the first release include the proposed draft merge-request operation or ship Git access first? If included, which routes and methods does it require? Merge and approval remain excluded.
-4. **Product maintainers:** Is one provider per Installation sufficient, or must one Installation select both GitHub and GitLab projects?
+3. **Product maintainers:** Is one provider per Installation sufficient, or must one Installation select both GitHub and GitLab projects?
 
 ## References
 
