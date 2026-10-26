@@ -20,13 +20,15 @@ The design includes opening a draft merge request from an approved branch. Maint
 
 ## Goals
 
-- Add GitLab.com alongside GitHub. Support Git reads, approved branch pushes, and draft merge-request creation.
+- Add GitLab.com while preserving GitHub. Each Installation selects one Git provider for this release; one Agent revision cannot bind both providers.
+- Support Git reads, approved branch pushes, and draft merge-request creation.
 - Authorize each Git or API request for the bound project. Deny missing, expired, or revoked credentials and disallowed operations.
+- Record attributable audit evidence for successful writes, denied operations, and uncertain upstream outcomes. Do not record the PAT or request bodies.
 - Document setup, verification, expiry, rotation, and revocation.
 
 ## Non-goals
 
-- This proposal covers a GitLab.com project binding. Configuring multiple Git providers together is a separate design.
+- Binding GitHub and GitLab to the same Installation or Agent revision. Revisit this in a separate design.
 - Self-managed GitLab or configurable upstream hosts.
 - Human-delegated access as the default team workflow.
 - Merge, approve, or administer merge requests.
@@ -38,9 +40,11 @@ The design includes opening a draft merge request from an approved branch. Maint
 
 ### Provider and project binding
 
-The existing `repo` capability lists approved projects and resolves bindings. The proposed GitLab Repo Driver binds a numeric project ID to its canonical Git path on `https://gitlab.com`. The sender uses the ID for API routes, the path for Git, and the approved ref for pushes. Reject any origin, path, or project ID that differs from the binding.
+The existing `repo` capability lists approved projects and resolves bindings. The proposed GitLab Repo Driver binds a numeric project ID to its canonical Git path on `https://gitlab.com`. The sender uses the ID for API routes, the path for Git, and the approved ref for pushes. Reject any origin, path, or project ID that differs from the binding. For this release, Installation configuration selects exactly one provider: GitHub or GitLab. Reject an Agent revision that requests bindings from both providers.
 
 Current composition selects GitHub and configures `gh`. Its repository sender admits Git operations and a [draft pull request](../../packages/contracts/src/prepared-github-egress.ts). Its separate installation profile admits GitHub REST and GraphQL. GitLab needs client configuration and a mapping from each approved operation to its Git exchange or API method, route, and request fields.
+
+Use the existing GitHub draft-operation lifecycle as a model for operation identity, one-send behavior, and receipt handling. Keep GitLab request and response validation in its provider owner; do not treat the GitHub-specific contract as a general provider interface.
 
 ### GitLab mapping to the GitHub team runbook
 
@@ -67,13 +71,13 @@ These profiles describe the proposed GitLab tasks. The adapter may use `glab` or
 
 For draft creation, the sender builds `POST /projects/:id/merge_requests` from the bound project ID, an approved source branch, an explicit target branch, and a title prefixed with `Draft:`. Both branches must already exist in that project. Reject a missing branch, a foreign `target_project_id`, or unapproved fields before sending the create. This operation cannot push, fork, mark ready, merge, or approve. [Create a merge request](https://docs.gitlab.com/api/merge_requests/#create-a-merge-request) · [Draft titles](https://docs.gitlab.com/user/project/merge_requests/drafts/)
 
-Record the operation ID before the first HTTP write. Keep its receipt when releasing the credential. If the sender proves it wrote no HTTP bytes, record that the create was not sent. If GitLab may have received it, keep the outcome unknown and reconcile the original operation without resubmitting. Confirm creation only from GitLab evidence tied to that operation, project, and both branches.
+Record a durable OCE operation ID before the first HTTP write. It correlates OCE work; it does not make GitLab's create request idempotent. The documented create request has no client operation key, so never repeat its `POST` after GitLab may have received it. If the sender proves it wrote no HTTP bytes, record that the create was not sent. Otherwise keep the outcome unknown. Do not infer success from a matching title or branch pair. An authorized operator must reconcile the operation against GitLab evidence; if that evidence cannot identify the result, leave the operation unresolved. Record each attempt's success, authorization denial, provider failure, or unknown result with its actor, bound project, provider, and operation identity. Use the existing mutation and authorization-denial audit events; record an unknown external result as a mutation failure with a fixed result state. If audit persistence fails, do not report completion or resend the request; retain the unresolved operation until its result and audit evidence are reconciled. Do not include the PAT or request body. [GitLab create API](https://docs.gitlab.com/api/merge_requests/#create-a-merge-request)
 
 Service accounts can hold fine-grained PATs: GitLab's API documents `granular_scopes` on rotated service-account tokens. The statement that fine-grained-token enforcement excludes service accounts describes enforcement, not token capability. GitLab documents project-bound Code Download/Push and Merge Request Read/Create permissions. However, its project service-account token endpoint documents coarse scopes; fine-grained PAT creation for the current user is an experimental GraphQL mutation. Validate a supported setup before finalizing the runbook. If this requires a broad bootstrap token, revoke it before binding. Rotation preserves granular grants but revokes the old token when issuing its replacement, so update the protected credential as one controlled operation. [Fine-grained PATs](https://docs.gitlab.com/auth/tokens/fine_grained_access_tokens/), [Git and REST permissions](https://docs.gitlab.com/auth/tokens/fine_grained_access_tokens_other/), [service-account token API](https://docs.gitlab.com/api/service_accounts/), [GraphQL token creation](https://docs.gitlab.com/api/graphql/reference/experimental/mutations/#personalaccesstokencreate).
 
 ### Relationship to RFC-0023 and its implementation
 
-RFC-0023 remains Proposed. Its [merged implementation](https://github.com/openclaw/openclaw-enterprise/pull/2487) gives the OpenClaw Control Plane (OCC) ownership of grants, execution identity, expiry, and withdrawal. Reuse its provider-scoped grant identity and delivery records. For GitLab, the paired Sandbox must prevent direct access. The selected Credential Proxy must check the execution, current grant, and actual operation before using the PAT. Withdrawal denies the next request even while the PAT is valid. A request that already passed that check may finish.
+RFC-0023 remains Proposed. Its [merged implementation](https://github.com/openclaw/openclaw-enterprise/pull/2487) gives the OpenClaw Control Plane (OCC) ownership of grants, execution identity, expiry, and withdrawal. Reuse its provider-scoped grant identity and delivery records. For GitLab, the paired Sandbox must prevent direct access. The selected Credential Proxy must check the execution, current grant, and actual operation before using the PAT. Withdrawal denies the next request even while the PAT is valid. A request that already passed that check may finish. Keep any possibly-sent mutation with an unknown result visible in the durable operation state and audit evidence until an operator reconciles it.
 
 GitLab issues the PAT. With a live secret, the operator rotates or revokes it in GitLab and updates the protected secret. With a prepared credential, Token Service owns acquisition, custody, and retirement through a GitLab adapter. Requests cannot issue or renew tokens. Ending a sender’s lease releases its local copy. The source owner handles revocation at GitLab.
 
@@ -96,8 +100,9 @@ flowchart TB
 
 Use one running Agent, the selected Credential Proxy and paired Sandbox, and an authorized GitLab.com project. Record the installed versions, tier, project role, and token grants.
 
-1. Clone a commit absent locally. Push a known commit to the allowed branch and verify its SHA at GitLab. Open a draft MR and verify its draft status, project, branches, and head commit in GitLab. Drop the reply to a separate create and verify recovery sends no second POST.
-2. Attempt a forbidden push. Verify no upload reaches GitLab. Withdraw the OCE binding while the PAT is still valid. Try a fresh fetch from the same Agent. Verify denial while its conversation still works. Use an observer that saw the allowed Git traffic to confirm zero upstream fetch requests. Record any gap in that observation.
+1. Clone a commit absent locally. Push a known commit to the allowed branch and verify its SHA at GitLab. Open a draft MR and verify its draft status, project, branches, and head commit in GitLab. Drop the reply to a separate create. Verify recovery sends no second `POST`; if the original operation cannot be identified in GitLab, keep it unresolved for an authorized operator.
+2. Attempt a forbidden push. Verify no upload reaches GitLab and that the denial is attributable in OCE audit. Withdraw the OCE binding while the PAT is still valid. Try a fresh fetch from the same Agent. Verify denial while its conversation still works. Use an observer that saw the allowed Git traffic to confirm zero upstream fetch requests. Record any gap in that observation.
+3. Verify successful writes and uncertain creates have attributable audit evidence with the provider, project, actor, and OCE operation identity. Confirm audit records contain no PAT or request body. Submit a revision with both provider selections and verify admission refuses it while single-provider GitHub and GitLab revisions remain independently supported.
 
 The [implementation plan](../plans/0024-gitlab-repository-credentials.md) covers credential failures and token non-disclosure. This spike ran no live GitLab operations. Stock OpenShell’s refusal of unqualified Git access is a separate result.
 
@@ -111,6 +116,7 @@ Support lets teams keep GitLab as their source of truth and retain their review 
 
 1. **Credential maintainers:** Should GitLab use a live static secret or a prepared-token provider? Which owner handles expiry, replacement, custody, and retirement for the selected source?
 2. **Product maintainers:** Can a supported GitLab.com project-service-account flow create the required fine-grained PAT without an experimental or lingering broad token, and how should rotation preserve its grants without interrupting active bindings?
+3. **Credential and Repo maintainers:** Which exact GitLab API operations and audit details do the selected profiles require?
 
 ## References
 
@@ -121,6 +127,9 @@ Support lets teams keep GitLab as their source of truth and retain their review 
 - [Credential Proxy Driver contract](../../packages/contracts/src/credential-proxy.ts)
 - [Current provider composition](../../apps/controller/src/composition/repository-credentials/platform.ts)
 - [GitHub client router](../../apps/controller/src/drivers/repo/github/credentials/client/router.ts)
+- [GitHub draft-operation client](../../apps/controller/src/drivers/repo/github/credentials/client/draft-pr.ts)
+- [Prepared GitHub operation contract](../../packages/contracts/src/prepared-github-egress.ts)
+- [Audit log reference](../../docs/guides/topics/audit-log.md)
 - [RFC-0008: Repository credentials](0008-repository-credentials/index.md)
 - [RFC-0023: Credential Proxy and credential lifecycle](0023-egress-proxy-credential-lifecycle/index.md), [merged implementation PR #2487](https://github.com/openclaw/openclaw-enterprise/pull/2487)
 - [RFC format example, PR #3050](https://github.com/openclaw/openclaw-enterprise/pull/3050)
