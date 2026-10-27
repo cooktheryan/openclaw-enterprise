@@ -165,6 +165,15 @@ turn, Secret, workspace replacement, and network checks run against that Pod.
 The test does not install Kata or attest its handler; compare the Pod's guest
 kernel with the node and confirm its QEMU process separately.
 
+The CI k3d preparation also accepts this opt-in setting when the host already
+has Kata. Set `OCC_TEST_KATA_CONTAINERD_TEMPLATE` to an absolute path to a K3s
+containerd v3 template that registers a handler with the same name. Set
+`OCC_TEST_KATA_ROOT` if Kata is outside `/opt/kata`. Preparation checks
+`/dev/kvm`, mounts Kata and host `/dev/shm` into its disposable k3d node, and
+creates only the selected RuntimeClass. Without these settings, the ordinary
+k3d lane keeps its current cluster setup. Check guest seccomp separately; the
+Kata 4.3.1 QEMU `runtime-rs` default disables it.
+
 For custom provider and image settings see the test's
 [source](../../tests/integration/harness-topology-k3d-real.test.mjs) and
 [network setup](../reference/drivers/kubernetes-compute/networking-and-isolation.md#networking).

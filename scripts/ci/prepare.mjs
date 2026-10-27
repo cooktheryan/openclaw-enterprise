@@ -1385,6 +1385,24 @@ async function ensureK3dCluster(statePath, state) {
   }
   await commandAvailable(process.env.OPENCLAW_CI_K3D_BIN ?? "k3d", ["version"]);
   const openShell = state.lane === "openshell";
+  const kataRuntimeClass = process.env.OCC_TEST_KATA_RUNTIME_CLASS?.trim();
+  const kataTemplate = process.env.OCC_TEST_KATA_CONTAINERD_TEMPLATE;
+  const kataRoot = process.env.OCC_TEST_KATA_ROOT ?? "/opt/kata";
+  if (kataRuntimeClass) {
+    if (
+      !/^[a-z0-9]([-a-z0-9.]*[a-z0-9])?$/.test(kataRuntimeClass) ||
+      kataTemplate === undefined ||
+      !isAbsolute(kataTemplate) ||
+      !isAbsolute(kataRoot)
+    ) {
+      throw new Error(
+        "Kata k3d trial requires a RuntimeClass name and absolute template/root paths.",
+      );
+    }
+    for (const path of ["/dev/kvm", "/dev/shm", kataTemplate, kataRoot]) {
+      await stat(path);
+    }
+  }
   const crossNodePluginStatus = fixtureLanes.has(state.lane);
   if (!openShell) {
     await commandAvailable(process.env.OCC_KUBECTL_BIN ?? "kubectl", ["version", "--client=true"]);
@@ -1447,6 +1465,18 @@ async function ensureK3dCluster(statePath, state) {
       "--agents",
       crossNodePluginStatus ? "1" : "0",
       ...(sharedStorage ? ["--volume", `${sharedStorage}:/var/lib/rancher/k3s/storage@all`] : []),
+      ...(kataRuntimeClass
+        ? [
+            "--volume",
+            `${kataTemplate}:/var/lib/rancher/k3s/agent/etc/containerd/config-v3.toml.tmpl@server:*`,
+            "--volume",
+            `${kataRoot}:${kataRoot}@server:*`,
+            "--volume",
+            "/dev/kvm:/dev/kvm@server:*",
+            "--volume",
+            "/dev/shm:/dev/shm@server:*",
+          ]
+        : []),
       "--api-port",
       `127.0.0.1:${apiPort}`,
       "--kubeconfig-update-default=false",
@@ -1488,6 +1518,27 @@ async function ensureK3dCluster(statePath, state) {
         "--timeout=120s",
       ]);
     });
+    if (kataRuntimeClass) {
+      const runtimeClassFile = join(directory, "kata-runtime-class.json");
+      await writeFile(
+        runtimeClassFile,
+        JSON.stringify({
+          apiVersion: "node.k8s.io/v1",
+          kind: "RuntimeClass",
+          metadata: { name: kataRuntimeClass },
+          handler: kataRuntimeClass,
+        }),
+      );
+      await execFile(process.env.OCC_KUBECTL_BIN ?? "kubectl", [
+        "--kubeconfig",
+        kubeconfig,
+        "--context",
+        resource.context,
+        "apply",
+        "-f",
+        runtimeClassFile,
+      ]);
+    }
     if (!openShell) {
       resource.kubernetesVersion = await k3dStage(state, "k3d-version", async () => {
         const version = await execFile(process.env.OCC_KUBECTL_BIN ?? "kubectl", [

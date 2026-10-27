@@ -138,7 +138,11 @@ the RuntimeClass name alone does not prove VM isolation. Run a model and tool
 turn, then replace the Harness Pod and confirm its workspace persists. Check
 Secret delivery, repository access when enabled, and allowed and denied network
 traffic. If `runtime.codexSeccompProfile` is configured, verify Codex tool
-execution with that profile under Kata.
+execution with that profile under Kata. Check the Kata handler's guest seccomp
+setting as part of qualification: Kata 4.3.1's QEMU `runtime-rs` configuration
+ships with `disable_guest_seccomp = true`. Set it to `false` for the selected
+handler and confirm that a guest process has an active seccomp filter. A Pod
+seccomp setting alone does not prove that the guest applies it.
 
 If the RuntimeClass or a suitable node is unavailable, the Agent remains unready.
 Restore the class or eligible node; an operator can remove the field to return

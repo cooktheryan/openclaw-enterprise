@@ -30,15 +30,17 @@ The [Kubernetes Compute Driver](../../apps/controller/src/drivers/compute/kubern
 | ---------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------- | ----------------------------------------------------------------------- |
 | Unset and blank configuration retains current behavior                                   | Existing and selected Kubernetes Driver conformance cases                              | Focused cases, typecheck, lint, and workspace boundary pass locally.    |
 | Selected Harness retains class and has no `subPath` mount                                | Existing real Agent API and worker workflow in k3d, with `OCC_TEST_KATA_RUNTIME_CLASS` | Test path wired; KVM run pending.                                       |
-| Model/tool turn, workspace replacement, Secrets, repository material, and network policy | Existing real Agent workflow with Kata on KVM                                          | Pending; the managed trial host has not reached verified SSH bootstrap. |
+| Model/tool turn, workspace replacement, Secrets, repository material, and network policy | Existing real Agent workflow with Kata on KVM                                          | Pending; the Kata smoke Pod does not exercise the Agent workflow.       |
 | Missing class or suitable node leaves Agent unready                                      | Real k3d Agent deployment                                                              | Pending.                                                                |
-| Guest VM, QEMU, and Codex localhost seccomp profile                                      | Kata guest and host observations                                                       | Pending.                                                                |
+| Guest VM, QEMU, and Codex localhost seccomp profile                                      | Kata guest and host observations                                                       | Guest VM and RuntimeDefault seccomp passed; Codex profile pending.       |
 
-The AWS trial confirmed `/dev/kvm` and `vmx` after enabling nesting on a managed host. That host lacked the prepared dependency base, so it was removed with its retained trial volume. A fresh managed host is starting for base preparation before any credentials are installed. No Kata guest evidence exists yet. No CI runner is currently documented as KVM-capable, so the Kata variant is not registered as a passing CI lane.
+The disposable `oce-demo` M7i host exposed `/dev/kvm` and `vmx` after nested virtualization was enabled. Kata 4.3.1's pinned QEMU `runtime-rs` shim booted a smoke Pod in k3d: the host kernel was `7.2.11-200.fc44.x86_64`, the guest kernel was `6.18.56`, and a QEMU process existed in the k3d node. The smoke Pod reached Ready in 5 seconds. A second guest Pod resolved the Kubernetes Service name and reported `Seccomp: 2` with one filter after the trial changed `disable_guest_seccomp` to `false`; this value is `true` in the shipped configuration. Its QEMU process had about 274 MiB resident memory while configured with 2 GiB guest memory. These observations do not establish a Codex model turn or its localhost seccomp profile.
+
+The disposable Fedora host required permissive SELinux for `virtiofsd` to write under `/run/kata`. An enforcing policy remains an operator qualification requirement. The k3d node needed host `/dev/shm` mounted to boot the 2 GiB guest; its default 64 MiB shared memory mount caused VM startup failure. No CI runner is currently documented as KVM-capable, so the Kata variant is not registered as a passing CI lane.
 
 ## Delivery record
 
-The proposal was submitted in [PR #3893](https://github.com/openclaw/openclaw-enterprise/pull/3893). The implementation remains in a draft worktree. Do not mark this plan complete until the real runtime checks pass and current documentation describes the shipped behavior.
+The proposal was submitted in [PR #3893](https://github.com/openclaw/openclaw-enterprise/pull/3893). The implementation is on its draft branch. Do not mark this plan complete until the real runtime checks pass and current documentation describes the shipped behavior.
 
 ## Manual Notes
 
