@@ -26,6 +26,10 @@ The [Kubernetes Compute Driver](../../apps/controller/src/drivers/compute/kubern
 - The operator can enable this boundary for Compute-owned dedicated Harnesses without moving Gateways or embedded Agents. Existing Installations keep their Pod template, mounts, runtime, and resource use when the field is absent or blank.
 - A configured but unavailable class leaves the Agent unready. This makes runtime selection visible to the operator and prevents a silent change to the cluster's default handler. The class name itself is not proof of a VM; the operator must verify the guest and hypervisor.
 
+## Decision requested from Compute owners
+
+Should Kubernetes Compute accept this Installation-level RuntimeClass selector and maintain a second, compatible mount layout for its dedicated Harnesses? The recommendation is to accept this bounded contract. It addresses Kata's documented mount limitation while leaving all unset and blank Installations on the current path. The extra Driver setting and layout carry maintenance cost; support must wait for the real Agent integration and installed-runtime qualification in the [plan](../plans/0024-optional-harness-runtime-class.md). This RFC remains Proposed until a Compute owner records a decision.
+
 ## Proposed contract and boundaries
 
 - The setting belongs to the Kubernetes Compute Driver's Installation configuration. It is optional and does not add a platform-core branch or a new Agent setting. Whitespace around a nonblank value is not silently changed; the value must be an exact valid Kubernetes RuntimeClass name. Empty and whitespace-only values mean unset.
