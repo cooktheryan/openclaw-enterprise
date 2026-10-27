@@ -16,7 +16,7 @@ An operator can select a RuntimeClass for Compute-owned dedicated Harnesses. An 
 ## Delivery steps
 
 1. Add optional Installation configuration `runtime.harnessRuntimeClassName` to the Kubernetes Compute Driver. Validate a nonblank name as an exact Kubernetes RuntimeClass name. Do not create or manage RuntimeClasses in OCE.
-2. Change only the selected dedicated Harness template to mount its existing persistent claim and Pod-local state as whole volumes. Prepare private workspace and state paths before the Harness starts. Preserve persistence, file permissions, Secret projection, repository material, and the Gateway/Harness storage split.
+2. Change only the selected dedicated Harness template to mount its existing persistent claim and Pod-local state as whole volumes. Prepare real private node-state and canonical workspace directories before the Harness starts; symlink aliases failed OpenClaw's atomic replace and resolved-path checks in the trial. Preserve persistence, file permissions, Secret projection, repository material, and the Gateway/Harness storage split.
 3. Observe the selected class on the Deployment template and ready Harness Pod before reporting readiness. Keep an unavailable class or node as a visible failure.
 4. Document operator setup and verification in the Kubernetes reference and guide. Update the source-backed Harness execution flow. The operator owns Kata installation, node placement, RuntimeClass scheduling and overhead, SELinux policy, KVM, and VM attestation.
 5. Extend the existing real k3d Agent workflow on a qualified KVM runner. Register a separate Kata CI variant without changing the ordinary lane.
@@ -30,10 +30,13 @@ An operator can select a RuntimeClass for Compute-owned dedicated Harnesses. An 
 
 ## Feasibility evidence and limits
 
-A disposable AWS M7i host with nested KVM booted a Kata 4.3.1 QEMU `runtime-rs` smoke Pod in k3d. The guest kernel differed from the host, QEMU ran in the node, cluster DNS resolved, and guest seccomp became active after the trial enabled it. The smoke Pod reached Ready in 5 seconds. The trial needed host `/dev/shm` in the k3d node and a permissive Fedora SELinux mode for `virtiofsd`; an enforcing policy remains unqualified. No OCE model or tool turn ran under Kata. The smoke trial does not satisfy the required Agent workflow checks or establish production support.
+A disposable AWS M7i host with nested KVM booted a Kata 4.3.1 QEMU `runtime-rs` smoke Pod in k3d. The guest kernel differed from the host, QEMU ran in the node, cluster DNS resolved, and guest seccomp became active after the trial enabled it. The smoke Pod reached Ready in 5 seconds. The trial needed host `/dev/shm` in the k3d node and permissive Fedora SELinux mode for `virtiofsd`; an enforcing policy remains unqualified.
+
+An isolated implementation prototype, kept out of the RFC PR, selected the class on a real dedicated Harness Pod. The Pod became Ready with zero `subPath` mounts and the test confirmed an Agent-owned model Secret in the Harness, no model credential in the Gateway, and default-deny network behavior. A real model turn, native file read/write, and attachment continuation passed. A separate Skill source upload, update, and denied-write test passed after its expected paths were changed to the opt-in canonical workspace. Two path checks required changes to the proposed layout: node state must be a real directory for atomic replacement, and the workspace must use a canonical resolved path for Node file policy. The broader Agent test failed: remote Memory retrieval timed out, Skill discovery did not match the expected workspace path, and the paired node was unavailable after a Harness restart. Persistent state across replacement, optional repository material, the unavailable-class case, Codex localhost seccomp behavior, and production SELinux enforcement remain unproved. Do not claim Kata support until these failures and the required verification above are resolved.
 
 ## Manual Notes
 
 ## Changelog
 
 - 2026-10-27: Proposed this plan with RFC-0024. The feasibility smoke trial does not change its Planned status.
+- 2026-10-27: Recorded the isolated Agent trial and its unresolved workflow failures; delivery remains Planned.
