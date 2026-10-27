@@ -20,6 +20,12 @@ This is an optional isolation choice. OCE does not install Kata Containers, conf
 
 The [Kubernetes Compute Driver](../../apps/controller/src/drivers/compute/kubernetes/index.ts) currently leaves `runtimeClassName` unset and uses `volumeMount.subPath` for private state and persistent Harness workspace paths. [Kata documents `subPath` as unsupported](https://github.com/kata-containers/kata-containers/blob/main/docs/Limitations.md#kubernetes-volumemountssubpaths). Merely naming a RuntimeClass would therefore leave the current dedicated Harness incompatible with Kata. The existing Gateway and embedded Agent behavior must remain the default for every Installation.
 
+## Benefits of the optional setting
+
+- A selected Kata handler runs the dedicated Harness Pod in a VM with its own guest kernel. This adds a hardware virtualization boundary around Codex tools that execute Agent-selected code. The [Kata architecture](https://github.com/kata-containers/kata-containers/blob/main/docs/design/virtualization.md) describes this as a second isolation layer; it does not replace OCE's Secret custody, NetworkPolicies, or tenant permissions.
+- The operator can enable this boundary for Compute-owned dedicated Harnesses without moving Gateways or embedded Agents. Existing Installations keep their Pod template, mounts, runtime, and resource use when the field is absent or blank.
+- A configured but unavailable class leaves the Agent unready. This makes runtime selection visible to the operator and prevents a silent change to the cluster's default handler. The class name itself is not proof of a VM; the operator must verify the guest and hypervisor.
+
 ## Proposed contract and boundaries
 
 - The setting belongs to the Kubernetes Compute Driver's Installation configuration. It is optional and does not add a platform-core branch or a new Agent setting. Whitespace around a nonblank value is not silently changed; the value must be an exact valid Kubernetes RuntimeClass name. Empty and whitespace-only values mean unset.
