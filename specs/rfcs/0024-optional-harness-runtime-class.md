@@ -12,13 +12,15 @@ author: cooktheryan
 
 ## Decision
 
-Add `drivers.compute.configuration.runtime.harnessRuntimeClassName` to the bundled Kubernetes Compute Driver. An Installation may set it to the name of an operator-installed Kubernetes RuntimeClass for Compute-owned dedicated Harness Pods. An absent, empty, or whitespace-only value selects the existing Pod template, volume layout, and cluster default runtime. A nonblank value selects the named class and a compatible Harness volume layout. It does not change Gateway Pods, embedded Agents, or Sandbox-owned Harnesses.
+Add `drivers.compute.configuration.runtime.harnessRuntimeClassName` to the bundled Kubernetes Compute Driver. An Installation may set it to the name of an operator-installed Kubernetes RuntimeClass for Compute-owned dedicated Harness Pods. An absent, empty, or whitespace-only value selects the existing Pod template, volume layout, and cluster default runtime; no alternate runtime installation is required. A nonblank value selects the named class and a compatible Harness volume layout. It does not change Gateway Pods, embedded Agents, or Sandbox-owned Harnesses.
 
 This is an optional isolation choice. OCE does not install Kata Containers, configure nodes, create a RuntimeClass, or infer that a named class uses Kata. Operators who want Kata must configure a Kata handler and RuntimeClass, set this field to its name, and verify that a Harness runs in a guest VM.
 
 ## Why this is needed
 
 The [Kubernetes Compute Driver](../../apps/controller/src/drivers/compute/kubernetes/index.ts) currently leaves `runtimeClassName` unset and uses `volumeMount.subPath` for private state and persistent Harness workspace paths. [Kata documents `subPath` as unsupported](https://github.com/kata-containers/kata-containers/blob/main/docs/Limitations.md#kubernetes-volumemountssubpaths). Merely naming a RuntimeClass would therefore leave the current dedicated Harness incompatible with Kata. The existing Gateway and embedded Agent behavior must remain the default for every Installation.
+
+Kata is the first runtime qualification target. The setting names a RuntimeClass rather than a runtime family, but it does not establish support for every handler. The earlier [gVisor proposal](https://github.com/openclaw/openclaw-enterprise/pull/248) closed unmerged; gVisor needs its own Harness compatibility and security qualification before OCE claims support for it.
 
 ## Benefits of the optional setting
 

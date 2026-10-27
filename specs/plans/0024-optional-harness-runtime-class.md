@@ -11,7 +11,7 @@ rfc: ../rfcs/0024-optional-harness-runtime-class.md
 
 ## Outcome
 
-An operator can select a RuntimeClass for Compute-owned dedicated Harnesses. An absent, empty, or whitespace-only setting preserves the current runtime and Pod layout. Gateways, embedded Agents, and Sandbox-owned Harnesses stay outside this change. A selected class that cannot run leaves the Agent unready and does not fall back to the cluster default.
+An operator can select a RuntimeClass for Compute-owned dedicated Harnesses. An absent, empty, or whitespace-only setting preserves the current runtime and Pod layout without installing an alternate runtime. Kata is the first qualification target; other handlers need separate qualification before OCE claims support. Gateways, embedded Agents, and Sandbox-owned Harnesses stay outside this change. A selected class that cannot run leaves the Agent unready and does not fall back to the cluster default.
 
 ## Delivery steps
 
@@ -40,3 +40,4 @@ An isolated implementation prototype, kept out of the RFC PR, selected the class
 
 - 2026-10-27: Proposed this plan with RFC-0024. The feasibility smoke trial does not change its Planned status.
 - 2026-10-27: Recorded the isolated Agent trial and its unresolved workflow failures; delivery remains Planned.
+- 2026-10-27: Clarified that Kata is the first qualification target and unset configuration needs no alternate runtime.
