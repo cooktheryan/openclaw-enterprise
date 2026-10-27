@@ -75,6 +75,38 @@ test(
         );
       }
       assert.equal(topology.gatewayPod.spec.runtimeClassName, undefined);
+      // A named class is not proof of a VM or of guest seccomp enforcement.
+      const node = await resource("node", topology.harnessPod.spec.nodeName);
+      const guestKernel = (
+        await kubectl(
+          "exec",
+          topology.harnessPod.metadata.name,
+          "--namespace",
+          topology.placement,
+          "--",
+          "node",
+          "-e",
+          'process.stdout.write(require("node:os").release())',
+        )
+      ).trim();
+      assert.notEqual(guestKernel, node.status.nodeInfo.kernelVersion);
+      const guestSeccomp = await kubectl(
+        "exec",
+        topology.harnessPod.metadata.name,
+        "--namespace",
+        topology.placement,
+        "--",
+        "node",
+        "-e",
+        'process.stdout.write(require("node:fs").readFileSync("/proc/self/status", "utf8"))',
+      );
+      assert.match(guestSeccomp, /^Seccomp:\s+2$/m);
+      if (process.env.OCC_TEST_KUBERNETES_CODEX_SECCOMP_PROFILE) {
+        assert.deepEqual(topology.harnessPod.spec.containers[0].securityContext.seccompProfile, {
+          type: "Localhost",
+          localhostProfile: process.env.OCC_TEST_KUBERNETES_CODEX_SECCOMP_PROFILE,
+        });
+      }
     }
     assert.notEqual(topology.gatewayPod.metadata.uid, topology.harnessPod.metadata.uid);
     assert.equal(topology.gatewayPod.spec.serviceAccountName, topology.gatewayServiceName);

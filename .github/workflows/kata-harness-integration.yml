@@ -1,0 +1,46 @@
+name: Kata Harness Integration
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  k3d-kata-model:
+    name: Dedicated Harness on Kata
+    # The operator supplies an ephemeral KVM runner with Kata installed and
+    # configured. The ordinary hosted k3d lane does not need these resources.
+    runs-on: [self-hosted, Linux, X64, kata-kvm-ephemeral]
+    timeout-minutes: 120
+    environment: integration-model
+    env:
+      CI_RUNNER_TEST_TIMEOUT_MS: "5400000"
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      OCC_TEST_OPENAI_MODEL: ${{ vars.OCC_TEST_OPENAI_MODEL }}
+      OCC_TEST_KUBERNETES_GATEWAY_IMAGE: ${{ vars.OCC_TEST_KUBERNETES_GATEWAY_IMAGE }}
+      OCC_TEST_KUBERNETES_AGENT_IMAGE: ${{ vars.OCC_TEST_KUBERNETES_AGENT_IMAGE }}
+      NODE_BASE_IMAGE: ${{ vars.NODE_BASE_IMAGE }}
+      OCC_TEST_KATA_RUNTIME_CLASS: kata-qemu-runtime-rs
+      OCC_TEST_KATA_CONTAINERD_TEMPLATE: /etc/oce-kata/config-v3.toml.tmpl
+      OCC_TEST_KATA_ROOT: /opt/kata
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Verify operator-prepared Kata host
+        shell: bash
+        run: |
+          test -c /dev/kvm
+          test -f "$OCC_TEST_KATA_CONTAINERD_TEMPLATE"
+          test -x "$OCC_TEST_KATA_ROOT/runtime-rs/bin/containerd-shim-kata-v2"
+          grep -Eq '^[[:space:]]*disable_guest_seccomp[[:space:]]*=[[:space:]]*false[[:space:]]*$' \
+            "$OCC_TEST_KATA_ROOT/share/defaults/kata-containers/runtime-rs/configuration-qemu-runtime-rs.toml"
+      - uses: ./.github/actions/run-ci-lane
+        with:
+          lane: k3d-model
+          profile: full
+          node-version: 24.22.1
+          artifact-prefix: kata-results
+          job-timeout-minutes: 120
