@@ -6,10 +6,9 @@ Secrets for the [Kubernetes Compute Driver](../kubernetes-compute.md).
 ## Shared contracts and the Codex implementation
 
 The public `ComputeDriver` and `HarnessWorkloadRequirements` contracts describe
-platform operations and workload requirements; OpenClaw's `AgentWorkspaceAccess`
-provides workspace capabilities without the Codex app-server protocol. The layout
-below describes dedicated Codex. Its launcher and filesystem layout
-do not extend the public Compute contract or apply to every Harness.
+platform operations and workloads. OpenClaw's `AgentWorkspaceAccess` provides
+workspace access without the Codex app-server protocol. This layout describes
+dedicated Codex only.
 
 | Boundary         | Shared behavior                                                                           | Current dedicated Codex implementation                                                                                      |
 | ---------------- | ----------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------- |
@@ -17,16 +16,14 @@ do not extend the public Compute contract or apply to every Harness.
 | Execution        | The selected Harness owns execution and its workspace lifecycle.                          | Codex app-server executes turns; a separate node serves file, Memory and Skills operations.                                 |
 | Startup          | Compute delivers the selected workload and observes readiness.                            | The launcher supervises Codex and the file node separately, separates their credentials, and sets Codex shell/PATH options. |
 
-The file node's explicit command allowlist disables OpenClaw worker hosting;
-this launcher is not an OpenClaw remote worker launcher.
+The file node's command allowlist disables OpenClaw worker hosting.
 
 [Dedicated native OpenClaw](../../harness-execution.md#native-worker-support)
 has an experimental worker path with Sandbox-owned Harness provisioning.
-Compute manages the Harness PVC and supplies its approved storage mounts.
-[Issue #77](https://github.com/openclaw/openclaw-enterprise/issues/77) tracks outstanding
-end-to-end qualification of model/tool turns, replacement, and retirement.
-Codex validation does not qualify native workers or require them to use Codex
-paths or app-server settings.
+Compute manages the Harness PVC and approved mounts.
+[Issue #77](https://github.com/openclaw/openclaw-enterprise/issues/77) tracks
+native model/tool, replacement, and retirement qualification. Codex validation
+does not qualify native workers or impose Codex paths on them.
 
 ## Gateway storage
 

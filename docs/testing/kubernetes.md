@@ -149,41 +149,29 @@ OCC_TEST_HARNESS_K3D_REAL=1 OCC_TEST_SLACK_LIVE=0 \
   node --env-file="$TEST_ENV_FILE" --test tests/integration/harness-topology-k3d-real.test.mjs
 ```
 
-All six non-Slack cases must pass: dedicated Codex, dedicated Skill source
-uploads, embedded OpenClaw, Secret lifecycle, and startup-failure evidence with
-plugins disabled and enabled. The Skill source case needs local `zip`. A
-selected suite fails on missing prerequisites; an unselected suite skips. The
-suite does not install OCC with Helm. Credentials belong only in the selected
-runtime Pods, not controllers, logs, or shell history. For private workspace
-routing, run the separate [gateway routing suite](#private-gateway-routing).
+All six non-Slack cases must pass. They cover dedicated Codex, Skill uploads,
+embedded OpenClaw, Secrets, and startup failures. Install `zip` for Skills.
+This suite does not install OCC with Helm; use the separate
+[gateway routing suite](#private-gateway-routing) for private workspace routing.
+Keep model credentials only in runtime Pods.
 
-For an operator-prepared KVM cluster with a qualified Kata RuntimeClass, set
-`OCC_TEST_KATA_RUNTIME_CLASS` to its exact name. The same real Agent workflow
-then selects that class for Compute-owned dedicated Harnesses and checks the
-ready Pod's class, zero `subPath` mounts, and unchanged Gateway. Its existing
-turn, Secret, workspace replacement, and network checks run against that Pod.
-The test does not install Kata or attest its handler; compare the Pod's guest
-kernel with the node and confirm its QEMU process separately.
+On a qualified KVM host, set `OCC_TEST_KATA_RUNTIME_CLASS` and
+`OCC_TEST_KATA_CONTAINERD_TEMPLATE` (an absolute K3s containerd v3 template
+path) before k3d preparation. The template must register a handler with that
+class name. If needed, set `OCC_TEST_KATA_ROOT` (default `/opt/kata`). The
+disposable node gets Kata, `/dev/kvm`, and host `/dev/shm`; preparation creates
+the RuntimeClass. The real Agent suite checks the selected Pod, its mounts,
+Gateway, turns, Secrets, workspace replacement, and network policy. Confirm a
+guest kernel and QEMU process separately. Check guest seccomp: Kata 4.3.1 QEMU
+`runtime-rs` disables it by default. Unset variables preserve ordinary k3d setup.
 
-The CI k3d preparation also accepts this opt-in setting when the host already
-has Kata. Set `OCC_TEST_KATA_CONTAINERD_TEMPLATE` to an absolute path to a K3s
-containerd v3 template that registers a handler with the same name. Set
-`OCC_TEST_KATA_ROOT` if Kata is outside `/opt/kata`. Preparation checks
-`/dev/kvm`, mounts Kata and host `/dev/shm` into its disposable k3d node, and
-creates only the selected RuntimeClass. Without these settings, the ordinary
-k3d lane keeps its current cluster setup. Check guest seccomp separately; the
-Kata 4.3.1 QEMU `runtime-rs` default disables it.
+For custom image settings see the
+[test source](../../tests/integration/harness-topology-k3d-real.test.mjs).
+Transcript persistence needs SQLite transcript support.
 
-For custom provider and image settings see the test's
-[source](../../tests/integration/harness-topology-k3d-real.test.mjs) and
-[network setup](../reference/drivers/kubernetes-compute/networking-and-isolation.md#networking).
-Transcript persistence requires a runtime with SQLite transcripts. A version
-number alone does not establish storage support.
-
-Gateway and Harness resources use separate managed namespaces. Default fixture
-placement does not prove production node-pool isolation. Use the separate
-[Slack](slack.md) and [observability](local.md#kubernetes-observability-acceptance)
-suites for those outcomes.
+Default fixture placement does not prove production node-pool isolation. Use
+separate [Slack](slack.md) and
+[observability](local.md#kubernetes-observability-acceptance) suites.
 
 ## Keycloak OIDC tests
 
