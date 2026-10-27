@@ -157,6 +157,14 @@ suite does not install OCC with Helm. Credentials belong only in the selected
 runtime Pods, not controllers, logs, or shell history. For private workspace
 routing, run the separate [gateway routing suite](#private-gateway-routing).
 
+For an operator-prepared KVM cluster with a qualified Kata RuntimeClass, set
+`OCC_TEST_KATA_RUNTIME_CLASS` to its exact name. The same real Agent workflow
+then selects that class for Compute-owned dedicated Harnesses and checks the
+ready Pod's class, zero `subPath` mounts, and unchanged Gateway. Its existing
+turn, Secret, workspace replacement, and network checks run against that Pod.
+The test does not install Kata or attest its handler; compare the Pod's guest
+kernel with the node and confirm its QEMU process separately.
+
 For custom provider and image settings see the test's
 [source](../../tests/integration/harness-topology-k3d-real.test.mjs) and
 [network setup](../reference/drivers/kubernetes-compute/networking-and-isolation.md#networking).

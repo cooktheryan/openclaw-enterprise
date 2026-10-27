@@ -8,6 +8,8 @@ author: cooktheryan
 
 **RFC-0024** · Proposed 2026-10-27 · [Kubernetes Compute Driver](../../docs/reference/drivers/kubernetes-compute.md)
 
+[Implementation plan](../plans/0024-optional-harness-runtime-class.md) · [RFC review](https://github.com/openclaw/openclaw-enterprise/pull/3893)
+
 ## Decision
 
 Add `drivers.compute.configuration.runtime.harnessRuntimeClassName` to the bundled Kubernetes Compute Driver. An Installation may set it to the name of an operator-installed Kubernetes RuntimeClass for Compute-owned dedicated Harness Pods. An absent, empty, or whitespace-only value selects the existing Pod template, volume layout, and cluster default runtime. A nonblank value selects the named class and a compatible Harness volume layout. It does not change Gateway Pods, embedded Agents, or Sandbox-owned Harnesses.
@@ -22,6 +24,7 @@ The [Kubernetes Compute Driver](../../apps/controller/src/drivers/compute/kubern
 
 - The setting belongs to the Kubernetes Compute Driver's Installation configuration. It is optional and does not add a platform-core branch or a new Agent setting. Whitespace around a nonblank value is not silently changed; the value must be an exact valid Kubernetes RuntimeClass name. Empty and whitespace-only values mean unset.
 - With a nonblank value, Compute renders `spec.template.spec.runtimeClassName` on its dedicated Harness Deployment. It prepares private home and persistent workspace paths through whole-volume mounts, without any `subPath` mount in that Pod's containers or init containers. The volume change applies only to the opt-in template. Persistent workspace state, Pod-local state, ownership, Secret projection, and private permissions retain their current meanings.
+- The opt-in Pod mounts its ephemeral home volume at `/home` and creates `/home/node` as an owner-only child. It mounts the existing Harness claim once at `/harness-workspace-state` and links the approved workspace and node-state paths into that claim. It mounts repository material at `/run/oce` and creates an owner-only credential child. The `/run/oce` root is writable to the Pod's `fsGroup`; the credential client accepts that exact Pod-local ancestor only for the opt-in path and still requires owner-only credential directories and files. The regular layout and checks remain unchanged.
 - Compute observes the selected RuntimeClass on the Deployment template and the live Harness Pod before reporting the workload ready. A missing class, unsupported handler, or unavailable node leaves the Agent unready; reconciliation must not remove the configured class or retry on the cluster default handler. Removing the setting is an explicit operator change that restores the current default template on subsequent reconciliation.
 - The Gateway retains its existing runtime and storage layout. Sandbox-owned Harnesses, including OpenShell, have their own runtime and admission contract and need separate qualification. This field does not claim or override them.
 - Operators own the runtime handler, node placement, RuntimeClass scheduling and overhead, KVM access, and guest isolation verification. Kubernetes accepting a RuntimeClass name does not attest its handler. OCE does not gain cluster-wide RuntimeClass management permissions.

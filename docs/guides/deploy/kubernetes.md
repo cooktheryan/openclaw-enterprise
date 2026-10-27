@@ -104,6 +104,8 @@ examples for your cluster:
   pool's labels, and `runtime.nodeSelector` to the Agent pool's labels.
 - Replace the bootstrap and gateway StorageClass placeholders with the classes
   prepared above. The dedicated Harness workspace uses the cluster default.
+- For VM-isolated dedicated Harnesses, complete the
+  [optional RuntimeClass setup](#optional-harness-runtimeclass) before saving the Installation.
 - Replace sample image references, CIDRs, DNS/client selectors, cluster name,
   administrator email, and HTTPS origin.
 - The example sets `database.caSecretName: occ-rds-ca`. For a database whose CA
@@ -117,3 +119,29 @@ Complete bootstrap and `occ installation get`, then follow
 [workload verification](production-agents.md#verify-production-workloads).
 Verify a real model turn and persistence across gateway replacement before
 handoff. Record operational ownership using [production handoff](production-handoff.md).
+
+## Optional Harness RuntimeClass
+
+To run Compute-owned dedicated Harnesses with Kata, first install and qualify a
+Kata handler and a RuntimeClass on eligible nodes. Configure its scheduling and
+Pod overhead in Kubernetes. Confirm KVM access on those nodes, then set
+`drivers.compute.configuration.runtime.harnessRuntimeClassName` to the exact
+RuntimeClass name in the Installation. Omit the field or leave it blank to keep
+the existing runtime and Pod mounts. This setting does not affect Gateway,
+embedded, or Sandbox-owned Harness Pods.
+
+After deploying a dedicated Agent, inspect its Harness Pod in the Agent's tenant
+namespace. Check `spec.runtimeClassName`, every container's `volumeMounts`, and
+the node running it. The selected Pod must have no `subPath` mounts. Compare its
+kernel with the node kernel and confirm that the node runs a QEMU VM for the Pod;
+the RuntimeClass name alone does not prove VM isolation. Run a model and tool
+turn, then replace the Harness Pod and confirm its workspace persists. Check
+Secret delivery, repository access when enabled, and allowed and denied network
+traffic. If `runtime.codexSeccompProfile` is configured, verify Codex tool
+execution with that profile under Kata.
+
+If the RuntimeClass or a suitable node is unavailable, the Agent remains unready.
+Restore the class or eligible node; an operator can remove the field to return
+to the default runtime through an explicit Installation change. See the
+[RuntimeClass contract](../../reference/drivers/kubernetes-compute.md#configuration)
+and [Harness storage](../../reference/drivers/kubernetes-compute/storage-and-credentials.md#harness-storage).

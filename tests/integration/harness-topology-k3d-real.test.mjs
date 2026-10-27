@@ -59,6 +59,23 @@ test(
       gatewayPassword: true,
     });
     assert.ok(topology.harnessPod, "dedicated production must start a real separate Codex Pod");
+    if (process.env.OCC_TEST_KATA_RUNTIME_CLASS?.trim()) {
+      // The real API/worker path must retain the selected class on its ready Pod.
+      assert.equal(
+        topology.harnessPod.spec.runtimeClassName,
+        process.env.OCC_TEST_KATA_RUNTIME_CLASS,
+      );
+      for (const container of [
+        ...topology.harnessPod.spec.initContainers,
+        ...topology.harnessPod.spec.containers,
+      ]) {
+        assert.ok(
+          container.volumeMounts?.every((mount) => mount.subPath === undefined),
+          `Harness ${container.name} uses a subPath mount`,
+        );
+      }
+      assert.equal(topology.gatewayPod.spec.runtimeClassName, undefined);
+    }
     assert.notEqual(topology.gatewayPod.metadata.uid, topology.harnessPod.metadata.uid);
     assert.equal(topology.gatewayPod.spec.serviceAccountName, topology.gatewayServiceName);
     assert.equal(topology.harnessPod.spec.serviceAccountName, topology.agentServiceName);

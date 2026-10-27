@@ -215,6 +215,10 @@ OCC_TEST_QA_MATRIX=1 node --env-file="$TEST_ENV_FILE" \
   --test tests/integration/qa-matrix-real.test.mjs
 ```
 
+On a qualified KVM runner, `OCC_TEST_KATA_RUNTIME_CLASS` sets the optional
+Harness RuntimeClass on the QA Installation; the Codex model and repository
+scenarios then use that class. The runner must install and verify Kata first.
+
 #### Scenarios
 
 | Scenario          | In advisory | Presets         | Checks                                                                                                      |

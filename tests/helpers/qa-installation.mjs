@@ -791,6 +791,12 @@ export async function createQaInstallation(
       ),
     };
   }
+  if (process.env.OCC_TEST_KATA_RUNTIME_CLASS?.trim()) {
+    // The existing QA model and repository scenarios use the real Installation.
+    f.configuration.drivers.compute.configuration.runtime.harnessRuntimeClassName =
+      process.env.OCC_TEST_KATA_RUNTIME_CLASS;
+    await f.saveInstallation(f.configuration);
+  }
   registerQaSecret(f.credentials.password);
   await f.record("startup", {
     installationId: f.installation.id,

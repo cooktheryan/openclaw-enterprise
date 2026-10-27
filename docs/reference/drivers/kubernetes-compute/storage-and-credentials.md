@@ -118,7 +118,8 @@ afterwards holds the Gateway unready with check `state-migration`
 ## Harness storage
 
 Each dedicated Agent receives a `40Gi` `ReadWriteOnce` filesystem claim
-from the default StorageClass, mounted only by its Harness:
+from the default StorageClass, mounted only by its Harness. By default, its
+paths use these `subPath` mounts:
 
 | Subpath                                      | Harness mount                        |
 | -------------------------------------------- | ------------------------------------ |
@@ -126,6 +127,14 @@ from the default StorageClass, mounted only by its Harness:
 | `generated-images`                           | `/home/node/.codex/generated_images` |
 | `codex-sessions`                             | `/home/node/.codex/sessions`         |
 | `workspace-node-<agent-hash>-<harness-hash>` | `/home/node/.openclaw-node`          |
+
+When `runtime.harnessRuntimeClassName` selects a class for a Compute-owned
+dedicated Harness, the Harness instead mounts the whole claim at
+`/harness-workspace-state`. Its init container links the same four paths to
+owner-only directories on that claim. Pod-local home and temporary volumes also
+use whole-volume mounts. The Gateway, embedded Agents, and Sandbox-owned
+Harnesses keep their current layout. See the
+[operator procedure](../../../guides/deploy/kubernetes.md#optional-harness-runtimeclass).
 
 The nonroot init container creates each subpath as uid 1000 with mode `0700`
 before the kubelet mounts it. Claims from the first release hold root-owned

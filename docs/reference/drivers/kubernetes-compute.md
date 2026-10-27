@@ -152,12 +152,23 @@ drivers:
         nodeSelector: { oce-role: agents }
         gatewayNodeSelector: { oce-role: control-plane }
         transportSecretPrefix: openclaw-agent-transport
+        # Optional: only Compute-owned dedicated Harness Pods use this class.
+        # Omit or leave blank to keep the current default runtime and mounts.
+        # harnessRuntimeClassName: kata-qemu-runtime-rs
         # Optional; first install this reviewed profile on every eligible node.
         codexSeccompProfile: profiles/codex-0.160.0.json
 ```
 
 The [complete Installation example](../../guides/deploy/production-installation.md#configure-the-installation)
 adds the other required Drivers and settings.
+
+`runtime.harnessRuntimeClassName` accepts an exact Kubernetes RuntimeClass name.
+An absent, empty, or whitespace-only value leaves the current Pod template and
+cluster default runtime in place. A nonblank value applies only to Compute-owned
+dedicated Harness Pods; the Gateway and Sandbox-owned Harness keep their own
+runtime. If the class or a suitable node is unavailable, the Agent stays unready.
+The [Kubernetes deployment guide](../../guides/deploy/kubernetes.md#optional-harness-runtimeclass)
+owns setup and guest verification.
 
 `runtime.nativeOpenClawSessionCapacity` accepts an integer from `1` through
 `1024` and defaults to `8`. It bounds retained native OpenClaw session workers

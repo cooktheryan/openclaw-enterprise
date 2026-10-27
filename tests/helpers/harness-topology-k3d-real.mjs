@@ -912,6 +912,10 @@ function installationConfiguration(authentication, platformNamespace, slack, opt
     configuration.drivers.compute.configuration.runtime.codexModelBaseUrl =
       process.env.OCC_TEST_CODEX_OPENAI_BASE_URL;
   }
+  if (process.env.OCC_TEST_KATA_RUNTIME_CLASS !== undefined) {
+    configuration.drivers.compute.configuration.runtime.harnessRuntimeClassName =
+      process.env.OCC_TEST_KATA_RUNTIME_CLASS;
+  }
   configuration.drivers.plugin = { id: "codex-plugin", configuration: {} };
   // The real Gateway loads its plugins during the first model request.
   configuration.drivers.compute.configuration.resources.gateway.limits.memory =
@@ -3198,10 +3202,20 @@ async function assertDedicatedWorkspaceResources(topology) {
     [undefined, claimName],
     "only Harness may mount the workspace claim",
   );
-  assert.deepEqual(
-    [sharedVolumeSubPaths(topology.gatewayPod), sharedVolumeSubPaths(topology.harnessPod)],
-    [[], harnessWorkspaceSubPaths],
-  );
+  if (topology.harnessPod.spec.runtimeClassName) {
+    assert.deepEqual(sharedVolumeSubPaths(topology.gatewayPod), []);
+    assert.deepEqual(
+      topology.harnessPod.spec.containers[0].volumeMounts.filter(
+        ({ name }) => name === sharedWorkspaceVolumeName,
+      ),
+      [{ name: sharedWorkspaceVolumeName, mountPath: "/harness-workspace-state" }],
+    );
+  } else {
+    assert.deepEqual(
+      [sharedVolumeSubPaths(topology.gatewayPod), sharedVolumeSubPaths(topology.harnessPod)],
+      [[], harnessWorkspaceSubPaths],
+    );
+  }
   return claim;
 }
 

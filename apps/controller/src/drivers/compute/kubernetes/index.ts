@@ -516,6 +516,8 @@ export interface KubernetesComputeDriverOptions {
     readonly nativeOpenClawSessionCapacity?: number;
     readonly nodeSelector?: Readonly<Record<string, string>>;
     readonly gatewayNodeSelector?: Readonly<Record<string, string>>;
+    /** Optional RuntimeClass for Compute-owned dedicated Harness Pods. */
+    readonly harnessRuntimeClassName?: string;
     readonly codexSeccompProfile?: string;
     /** HTTPS OpenAI-compatible Responses endpoint for dedicated Codex API-key auth. */
     readonly codexModelBaseUrl?: string;
@@ -3483,6 +3485,7 @@ export class KubernetesComputeDriver implements ComputeDriver {
           nativeOpenClawSessionCapacity: { type: "integer", minimum: 1, maximum: 1024 },
           nodeSelector: { type: "object", additionalProperties: { type: "string" } },
           gatewayNodeSelector: { type: "object", additionalProperties: { type: "string" } },
+          harnessRuntimeClassName: { type: "string" },
           codexSeccompProfile: { type: "string", minLength: 1 },
           codexModelBaseUrl: { type: "string", minLength: 1 },
           channels: {
@@ -3551,6 +3554,11 @@ export class KubernetesComputeDriver implements ComputeDriver {
 
   private get proxyDriver() {
     return this.protectedExecution?.proxy;
+  }
+
+  private get harnessRuntimeClassName(): string | undefined {
+    const name = this.options.runtime?.harnessRuntimeClassName;
+    return name === undefined || name.trim() === "" ? undefined : name;
   }
   private readonly nodeEnrollment: GatewayNodeEnrollment | undefined;
   // How long, in total across passes, preparation may wait for one setup's node to pair.
@@ -3840,6 +3848,17 @@ export class KubernetesComputeDriver implements ComputeDriver {
               `/runtime/${setting}`,
             );
           }
+        }
+        const harnessRuntimeClassName = options.runtime.harnessRuntimeClassName;
+        if (
+          harnessRuntimeClassName !== undefined &&
+          harnessRuntimeClassName.trim() !== "" &&
+          !isKubernetesResourceName(harnessRuntimeClassName)
+        ) {
+          throw configurationConstraintFailure(
+            "runtime.harnessRuntimeClassName must be a DNS-safe Kubernetes RuntimeClass name.",
+            "/runtime/harnessRuntimeClassName",
+          );
         }
         const gatewayStorageClassName = required(
           options.runtime.gatewayStorageClassName,
@@ -7385,7 +7404,10 @@ export class KubernetesComputeDriver implements ComputeDriver {
         await this.lifecycle.beforeWorkloadStop(revision, { cleanup: true });
         return incomplete();
       }
-      if (!this.deploymentReady(deployment)) {
+      if (
+        !this.deploymentReady(deployment) ||
+        !(await this.computeHarnessRuntimeReady(revision, deployment, namespace))
+      ) {
         return incomplete();
       }
       if (repositoryMaterial !== undefined) {
@@ -7857,7 +7879,11 @@ export class KubernetesComputeDriver implements ComputeDriver {
           revisionId: revision.id,
         });
       }
-      if (deployment === undefined || !this.deploymentReady(deployment)) {
+      if (
+        deployment === undefined ||
+        !this.deploymentReady(deployment) ||
+        !(await this.computeHarnessRuntimeReady(revision, deployment, namespace))
+      ) {
         throw new Error("The exact AgentRevision workload is not ready.");
       }
       if (repositoryMaterial !== undefined) {
@@ -12042,15 +12068,30 @@ export class KubernetesComputeDriver implements ComputeDriver {
     (initialization.args as string[])[0] += `
 mkdirSync(${JSON.stringify(nodeStatePath)}, { recursive: true, mode: 0o700 });
 chmodSync(${JSON.stringify(nodeStatePath)}, 0o700);`;
-    // Reuse the existing Harness volume outside the project directory, without
-    // declaring the same claim twice. The Agent-scoped subpath preserves node
-    // identity across Pod and AgentRevision replacement.
-    (container.volumeMounts as V1VolumeMount[]).push({
-      name: HARNESS_WORKSPACE_VOLUME,
-      mountPath: NODE_STATE_PATH,
-      subPath: name,
-      readOnly: false,
-    });
+    if (
+      this.harnessRuntimeClassName !== undefined &&
+      pod.runtimeClassName === this.harnessRuntimeClassName
+    ) {
+      (initialization.args as string[])[0] += `
+{
+  const { lstatSync, readlinkSync, symlinkSync } = require("node:fs");
+  const link = "/runtime-state/node/.openclaw-node";
+  const target = ${JSON.stringify(nodeStatePath)};
+  const current = lstatSync(link, { throwIfNoEntry: false });
+  if (current === undefined) symlinkSync(target, link, "dir");
+  else if (!current.isSymbolicLink() || readlinkSync(link) !== target) {
+    throw new Error("Harness node state link is invalid");
+  }
+}`;
+    } else {
+      // The default layout keeps the Agent-scoped subpath across replacements.
+      (container.volumeMounts as V1VolumeMount[]).push({
+        name: HARNESS_WORKSPACE_VOLUME,
+        mountPath: NODE_STATE_PATH,
+        subPath: name,
+        readOnly: false,
+      });
+    }
     return { container, variables };
   }
 
@@ -12526,6 +12567,34 @@ chmodSync(${JSON.stringify(nodeStatePath)}, 0o700);`;
       observed >= generation &&
       typeof ready === "number" &&
       ready >= replicas
+    );
+  }
+
+  private async computeHarnessRuntimeReady(
+    revision: AgentRevision,
+    deployment: ManagedKubernetesObject,
+    namespace: KubernetesNamespaceAddress,
+  ): Promise<boolean> {
+    const runtimeClassName = this.harnessRuntimeClassName;
+    if (runtimeClassName === undefined) {
+      return true;
+    }
+    const template = asRecord(deployment.spec?.template);
+    if (asRecord(template?.spec)?.runtimeClassName !== runtimeClassName) {
+      return false;
+    }
+    const pods = (await this.revisionPods(revision, namespace, "agent")).filter(
+      (pod) => asRecord(pod.metadata)?.deletionTimestamp === undefined,
+    );
+    return (
+      pods.length === 1 &&
+      asRecord(pods[0]?.spec)?.runtimeClassName === runtimeClassName &&
+      (Array.isArray(asRecord(pods[0]?.status)?.conditions)
+        ? (asRecord(pods[0]?.status)?.conditions as readonly unknown[]).some((condition) => {
+            const ready = asRecord(condition);
+            return ready?.type === "Ready" && ready.status === "True";
+          })
+        : false)
     );
   }
 
@@ -14278,7 +14347,12 @@ chmodSync(${JSON.stringify(nodeStatePath)}, 0o700);`;
     return mounts;
   }
 
-  private privateStateDirectories(role: WorkspaceRole, projectedSkillPath?: string): string[] {
+  private privateStateDirectories(
+    role: WorkspaceRole,
+    projectedSkillPath?: string,
+    wholeHarnessVolumes = false,
+  ): string[] {
+    const homeRoot = wholeHarnessVolumes ? "/runtime-state/node" : "/runtime-state/home";
     const paths =
       role === "gateway"
         ? [
@@ -14291,11 +14365,11 @@ chmodSync(${JSON.stringify(nodeStatePath)}, 0o700);`;
       paths.push(projectedSkillPath);
     }
     return [
-      "/runtime-state/home",
+      homeRoot,
       "/runtime-temporary/tmp",
       ...[...new Set(paths.map((mountPath) => mountPath.slice(0, mountPath.lastIndexOf("/"))))]
         .filter((directory) => directory !== "/home/node")
-        .map((directory) => directory.replace(/^\/home\/node/u, "/runtime-state/home")),
+        .map((directory) => directory.replace(/^\/home\/node/u, homeRoot)),
     ];
   }
 
@@ -14305,8 +14379,9 @@ chmodSync(${JSON.stringify(nodeStatePath)}, 0o700);`;
     embedded: boolean,
     writableConfiguration = false,
     projectedSkillPath?: string,
+    wholeHarnessVolumes = false,
   ): KubernetesRecord {
-    const directories = this.privateStateDirectories(role, projectedSkillPath);
+    const directories = this.privateStateDirectories(role, projectedSkillPath, wholeHarnessVolumes);
     const volumeMounts: V1VolumeMount[] = [
       { name: "runtime-state", mountPath: "/runtime-state" },
       { name: "runtime-temporary", mountPath: "/runtime-temporary" },
@@ -14330,7 +14405,7 @@ chmodSync(${JSON.stringify(nodeStatePath)}, 0o700);`;
     // Init mounts the volume root; the gateway later mounts its home subdirectory.
     const writableConfigurationInitPath = WRITABLE_CONFIGURATION_PATH.replace(
       /^\/home\/node/u,
-      "/runtime-state/home",
+      wholeHarnessVolumes ? "/runtime-state/node" : "/runtime-state/home",
     );
     const script = [
       writableConfiguration
@@ -15677,6 +15752,11 @@ chmodSync(${JSON.stringify(nodeStatePath)}, 0o700);`;
         : undefined;
     const runtime = this.options.runtime;
     const dedicated = !embedded;
+    const harnessRuntimeClassName =
+      role === "agent" && dedicated && !useRuntimeWorkspace
+        ? this.harnessRuntimeClassName
+        : undefined;
+    const wholeHarnessVolumes = harnessRuntimeClassName !== undefined;
     // The first process to see the signing key must be the packaged launcher.
     // Custom environment and repository tooling can alter how it is loaded.
     const recordEmbeddedGatewayOwner =
@@ -15752,6 +15832,7 @@ chmodSync(${JSON.stringify(nodeStatePath)}, 0o700);`;
             embedded,
             writableConfiguration,
             publicGithubRead?.skillPath,
+            wholeHarnessVolumes,
           ),
         ]
       : [];
@@ -15863,7 +15944,32 @@ chmodSync(${JSON.stringify(nodeStatePath)}, 0o700);`;
         mountPath: PLUGIN_RUNTIME_DIRECTORY,
         readOnly: true,
       });
-      if (publicGithubRead !== undefined) {
+      if (publicGithubRead !== undefined && wholeHarnessVolumes) {
+        const skillDirectory = publicGithubRead.skillPath.slice(
+          0,
+          publicGithubRead.skillPath.lastIndexOf("/"),
+        );
+        volumes.push({
+          name: "public-github-read-skill",
+          configMap: {
+            name: pluginRuntime.name,
+            items: [
+              {
+                key: PUBLIC_GITHUB_READ_SKILL,
+                path: publicGithubRead.skillPath.slice(
+                  publicGithubRead.skillPath.lastIndexOf("/") + 1,
+                ),
+              },
+            ],
+            optional: false,
+          },
+        });
+        volumeMounts.push({
+          name: "public-github-read-skill",
+          mountPath: skillDirectory,
+          readOnly: true,
+        });
+      } else if (publicGithubRead !== undefined) {
         // The Gateway discovers its managed skill; the Harness needs the same
         // read-only file for native Codex. Neither uses the durable workspace.
         volumeMounts.push({
@@ -15934,7 +16040,7 @@ chmodSync(${JSON.stringify(nodeStatePath)}, 0o700);`;
           "Repository credential material requires the Agent's Harness workload.",
         );
       }
-      const delivery = repositoryMaterialDeployment(repositoryMaterial, image);
+      const delivery = repositoryMaterialDeployment(repositoryMaterial, image, wholeHarnessVolumes);
       volumes.push(...delivery.volumes);
       volumeMounts.push(...delivery.volumeMounts);
       initContainers.push(...delivery.initContainers);
@@ -15994,8 +16100,12 @@ chmodSync(${JSON.stringify(nodeStatePath)}, 0o700);`;
         { name: "runtime-temporary", emptyDir: { sizeLimit: "64Mi" } },
       );
       volumeMounts.push(
-        { name: "runtime-state", mountPath: "/home/node", subPath: "home" },
-        { name: "runtime-temporary", mountPath: "/tmp", subPath: "tmp" },
+        wholeHarnessVolumes
+          ? { name: "runtime-state", mountPath: "/home" }
+          : { name: "runtime-state", mountPath: "/home/node", subPath: "home" },
+        wholeHarnessVolumes
+          ? { name: "runtime-temporary", mountPath: "/tmp" }
+          : { name: "runtime-temporary", mountPath: "/tmp", subPath: "tmp" },
       );
     }
     if (dedicated && role === "agent") {
@@ -16004,7 +16114,11 @@ chmodSync(${JSON.stringify(nodeStatePath)}, 0o700);`;
         name: HARNESS_WORKSPACE_VOLUME,
         persistentVolumeClaim: { claimName: this.harnessWorkspaceClaimName(agentId) },
       });
-      volumeMounts.push(...this.harnessWorkspaceVolumeMounts());
+      volumeMounts.push(
+        ...(wholeHarnessVolumes
+          ? [{ name: HARNESS_WORKSPACE_VOLUME, mountPath: "/harness-workspace-state" }]
+          : this.harnessWorkspaceVolumeMounts()),
+      );
       const initialization = initContainers[0]!;
       (initialization.volumeMounts as V1VolumeMount[]).push({
         name: HARNESS_WORKSPACE_VOLUME,
@@ -16013,6 +16127,21 @@ chmodSync(${JSON.stringify(nodeStatePath)}, 0o700);`;
       (initialization.args as string[])[0] += `\n${harnessWorkspacePreparationScript(
         HARNESS_WORKSPACE_CATEGORIES.map(([subPath]) => `/harness-workspace-state/${subPath}`),
       )}`;
+      if (wholeHarnessVolumes) {
+        (initialization.args as string[])[0] += `
+{
+  const { lstatSync, readlinkSync, symlinkSync } = require("node:fs");
+  for (const [name, mountPath] of ${JSON.stringify(HARNESS_WORKSPACE_CATEGORIES)}) {
+    const link = mountPath.replace("/home/node", "/runtime-state/node");
+    const target = "/harness-workspace-state/" + name;
+    const current = lstatSync(link, { throwIfNoEntry: false });
+    if (current === undefined) symlinkSync(target, link, "dir");
+    else if (!current.isSymbolicLink() || readlinkSync(link) !== target) {
+      throw new Error("Harness workspace link is invalid: " + link);
+    }
+  }
+}`;
+      }
     }
     if (dedicated && role === "gateway") {
       // This is the logical workspace key; file access goes through the paired node.
@@ -16110,6 +16239,7 @@ chmodSync(${JSON.stringify(nodeStatePath)}, 0o700);`;
         variables.push(
           { name: "HOME", value: HARNESS_HOME },
           { name: "OPENCLAW_WORKSPACE_DIR", value: "/home/node/workspace" },
+          ...(wholeHarnessVolumes ? [{ name: "TMPDIR", value: "/tmp/tmp" }] : []),
           {
             name: "PATH",
             value: `${repositoryMaterial === undefined ? "" : `${REPOSITORY_CLIENT_BIN}:`}/app/node_modules/.bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin`,
@@ -16340,6 +16470,9 @@ chmodSync(${JSON.stringify(nodeStatePath)}, 0o700);`;
               ? { terminationGracePeriodSeconds: GATEWAY_STOP_TIMEOUT_MS / 1000 }
               : {}),
             ...runtimeNodeSelector,
+            ...(harnessRuntimeClassName === undefined
+              ? {}
+              : { runtimeClassName: harnessRuntimeClassName }),
             ...(providerUrl === undefined
               ? {}
               : {
