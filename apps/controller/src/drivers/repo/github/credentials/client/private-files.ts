@@ -4,9 +4,6 @@ import { dirname, resolve } from "node:path";
 
 export async function assertPrivateDirectory(path: string): Promise<void> {
   const absolute = resolve(path);
-  const wholeVolumeMaterial =
-    absolute === "/run/oce/repository-credentials" ||
-    absolute.startsWith("/run/oce/repository-credentials/");
   let cursor = absolute;
   while (true) {
     const stat = await lstat(cursor);
@@ -17,16 +14,7 @@ export async function assertPrivateDirectory(path: string): Promise<void> {
       throw new Error("unsafe-client-directory");
     }
     // A sticky ancestor such as /tmp protects each user's owned child directory.
-    // The optional whole-volume Harness layout mounts a Pod-local memory emptyDir
-    // at /run/oce. Its private credential child remains owner-only. No other Pod
-    // can mount this emptyDir; reject unexpected group, world write, or ownership.
-    const podLocalRoot =
-      wholeVolumeMaterial &&
-      cursor === "/run/oce" &&
-      stat.uid === 0 &&
-      stat.gid === process.getuid?.() &&
-      (stat.mode & 0o002) === 0;
-    if ((stat.mode & 0o022) !== 0 && (stat.mode & 0o1000) === 0 && !podLocalRoot) {
+    if ((stat.mode & 0o022) !== 0 && (stat.mode & 0o1000) === 0) {
       throw new Error("unsafe-client-directory");
     }
     const parent = dirname(cursor);

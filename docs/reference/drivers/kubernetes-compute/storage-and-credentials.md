@@ -6,9 +6,10 @@ Secrets for the [Kubernetes Compute Driver](../kubernetes-compute.md).
 ## Shared contracts and the Codex implementation
 
 The public `ComputeDriver` and `HarnessWorkloadRequirements` contracts describe
-platform operations and workloads. OpenClaw's `AgentWorkspaceAccess` provides
-workspace access without the Codex app-server protocol. This layout describes
-dedicated Codex only.
+platform operations and workload requirements; OpenClaw's `AgentWorkspaceAccess`
+provides workspace capabilities without the Codex app-server protocol. The layout
+below describes dedicated Codex. Its launcher and filesystem layout
+do not extend the public Compute contract or apply to every Harness.
 
 | Boundary         | Shared behavior                                                                           | Current dedicated Codex implementation                                                                                      |
 | ---------------- | ----------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------- |
@@ -16,14 +17,16 @@ dedicated Codex only.
 | Execution        | The selected Harness owns execution and its workspace lifecycle.                          | Codex app-server executes turns; a separate node serves file, Memory and Skills operations.                                 |
 | Startup          | Compute delivers the selected workload and observes readiness.                            | The launcher supervises Codex and the file node separately, separates their credentials, and sets Codex shell/PATH options. |
 
-The file node's command allowlist disables OpenClaw worker hosting.
+The file node's explicit command allowlist disables OpenClaw worker hosting;
+this launcher is not an OpenClaw remote worker launcher.
 
 [Dedicated native OpenClaw](../../harness-execution.md#native-worker-support)
 has an experimental worker path with Sandbox-owned Harness provisioning.
-Compute manages the Harness PVC and approved mounts.
-[Issue #77](https://github.com/openclaw/openclaw-enterprise/issues/77) tracks
-native model/tool, replacement, and retirement qualification. Codex validation
-does not qualify native workers or impose Codex paths on them.
+Compute manages the Harness PVC and supplies its approved storage mounts.
+[Issue #77](https://github.com/openclaw/openclaw-enterprise/issues/77) tracks outstanding
+end-to-end qualification of model/tool turns, replacement, and retirement.
+Codex validation does not qualify native workers or require them to use Codex
+paths or app-server settings.
 
 ## Gateway storage
 
@@ -115,8 +118,7 @@ afterwards holds the Gateway unready with check `state-migration`
 ## Harness storage
 
 Each dedicated Agent receives a `40Gi` `ReadWriteOnce` filesystem claim
-from the default StorageClass, mounted only by its Harness. By default, its
-paths use these `subPath` mounts:
+from the default StorageClass, mounted only by its Harness:
 
 | Subpath                                      | Harness mount                        |
 | -------------------------------------------- | ------------------------------------ |
@@ -124,14 +126,6 @@ paths use these `subPath` mounts:
 | `generated-images`                           | `/home/node/.codex/generated_images` |
 | `codex-sessions`                             | `/home/node/.codex/sessions`         |
 | `workspace-node-<agent-hash>-<harness-hash>` | `/home/node/.openclaw-node`          |
-
-When `runtime.harnessRuntimeClassName` selects a class for a Compute-owned
-dedicated Harness, the Harness instead mounts the whole claim at
-`/harness-workspace-state`. Its init container links the same four paths to
-owner-only directories on that claim. Pod-local home and temporary volumes also
-use whole-volume mounts. The Gateway, embedded Agents, and Sandbox-owned
-Harnesses keep their current layout. See the
-[operator procedure](../../../guides/deploy/kubernetes.md#optional-harness-runtimeclass).
 
 The nonroot init container creates each subpath as uid 1000 with mode `0700`
 before the kubelet mounts it. Claims from the first release hold root-owned

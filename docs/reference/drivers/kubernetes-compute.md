@@ -17,10 +17,11 @@ this form. Wrong names or duplicate tenant claims fail closed. Adopted namespace
 keep their names; OpenShell rejects names exceeding its Workspace limit.
 
 The optional [OpenShell Sandbox Driver](openshell-sandbox.md) is designed to
-own dedicated Harness Pods. Dedicated native OpenClaw needs a SandboxDriver
-that provisions the Harness and declares network, filesystem, and process
-containment. Stock OpenShell lacks required credential and workload-identity
-projections; Agent deployment with it remains unsupported.
+own dedicated Codex and native OpenClaw Harness Pods while Compute keeps the
+other resources. Dedicated native OpenClaw requires a selected
+SandboxDriver that provisions the Harness and declares networking, filesystem, and
+process containment. Stock OpenShell cannot provide required credential and
+workload-identity projections; Agent deployment with OpenShell remains unsupported.
 
 Operator contracts:
 
@@ -29,10 +30,10 @@ Operator contracts:
 
 ## Existing split-layout installations
 
-Before #925, Gateways, Gateway state, and canonical Secrets used separate
-`oce-gateways-<hash>` namespaces. Follow
-[split-layout adoption](kubernetes-compute/split-layout-installations.md)
-before replacing controller images.
+Releases before #925 kept each Namespace's Gateways, Gateway state and canonical
+Secrets in a separate `oce-gateways-<hash>` namespace. Check for and adopt these
+tenants with [Existing split-layout installations](kubernetes-compute/split-layout-installations.md)
+before replacing the controller images.
 
 ## Requirements
 
@@ -62,9 +63,10 @@ before replacing controller images.
   localhost seccomp profile on every eligible node before Agent startup;
   Kubernetes fails the Codex Pod when it is missing.
 
-The worker manages PersistentVolumeClaims and private-routing HTTPRoutes through
-tenant-local RoleBindings. Only the controller API issues provider credentials.
-The worker reads admitted material and maintains Harness Secret projections.
+The worker manages PersistentVolumeClaims and, when private gateway routing is
+enabled, HTTPRoutes through tenant-local RoleBindings. Only the controller API
+issues provider credentials. The worker reads admitted transport/channel material
+and maintains Harness Secret projections for each Agent revision in the tenant namespace.
 The API does not need gateway Pod reads, exec, route writes, or certificate
 management for workspace-file access. Do not grant wildcard permissions,
 cluster-wide access to tenant resources, workload access to controller
@@ -150,23 +152,12 @@ drivers:
         nodeSelector: { oce-role: agents }
         gatewayNodeSelector: { oce-role: control-plane }
         transportSecretPrefix: openclaw-agent-transport
-        # Optional: only Compute-owned dedicated Harness Pods use this class.
-        # Omit or leave blank to keep the current default runtime and mounts.
-        # harnessRuntimeClassName: kata-qemu-runtime-rs
         # Optional; first install this reviewed profile on every eligible node.
         codexSeccompProfile: profiles/codex-0.160.0.json
 ```
 
 The [complete Installation example](../../guides/deploy/production-installation.md#configure-the-installation)
 adds the other required Drivers and settings.
-
-`runtime.harnessRuntimeClassName` accepts an exact Kubernetes RuntimeClass name.
-An absent, empty, or whitespace-only value leaves the current Pod template and
-cluster default runtime in place. A nonblank value applies only to Compute-owned
-dedicated Harness Pods; the Gateway and Sandbox-owned Harness keep their own
-runtime. If the class or a suitable node is unavailable, the Agent stays unready.
-The [Kubernetes deployment guide](../../guides/deploy/kubernetes.md#optional-harness-runtimeclass)
-owns setup and guest verification.
 
 `runtime.nativeOpenClawSessionCapacity` accepts an integer from `1` through
 `1024` and defaults to `8`. It bounds retained native OpenClaw session workers

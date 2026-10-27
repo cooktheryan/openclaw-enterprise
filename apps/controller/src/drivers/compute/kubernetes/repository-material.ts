@@ -368,11 +368,7 @@ export function repositoryMaterialFromSecret(
   return Object.freeze({ ...binding, ...validated });
 }
 
-export function repositoryMaterialDeployment(
-  spec: ResolvedRepositoryMaterialSpec,
-  image: string,
-  wholeVolume = false,
-) {
+export function repositoryMaterialDeployment(spec: ResolvedRepositoryMaterialSpec, image: string) {
   const manifest = {
     version: 1,
     generation: spec.generation,
@@ -412,14 +408,12 @@ export function repositoryMaterialDeployment(
     { name: "repository-material-private", emptyDir: { medium: "Memory", sizeLimit: "4Mi" } },
   ];
   const volumeMounts: V1VolumeMount[] = [
-    wholeVolume
-      ? { name: "repository-material-private", mountPath: "/run/oce", readOnly: true }
-      : {
-          name: "repository-material-private",
-          mountPath: REPOSITORY_MATERIAL_ROOT,
-          subPath: "private",
-          readOnly: true,
-        },
+    {
+      name: "repository-material-private",
+      mountPath: REPOSITORY_MATERIAL_ROOT,
+      subPath: "private",
+      readOnly: true,
+    },
   ];
   return {
     volumes,
@@ -434,9 +428,7 @@ export function repositoryMaterialDeployment(
           REPOSITORY_MATERIAL_INIT_ENTRYPOINT,
           JSON.stringify({
             sourceRoot: "/run/oce/repository-projection",
-            targetRoot: wholeVolume
-              ? "/run/oce/repository-output/repository-credentials"
-              : "/run/oce/repository-output/private",
+            targetRoot: "/run/oce/repository-output/private",
             manifest,
           }),
         ],

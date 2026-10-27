@@ -1,7 +1,7 @@
 ---
 created: 2026-08-21
-updated: 2026-10-27
-last_updated_session: authoring-run/f826be86-eb99-46ad-b2e4-ecdf6b3a0bd8
+updated: 2026-10-26
+last_updated_session: authoring-run/5da38bb7-602c-4a49-a7f2-863af81abcba
 ---
 
 # Harness Execution Topology Flow
@@ -135,13 +135,6 @@ errors identify the setting.
 `runtime.gatewayNodeSelector`
 independently places the Gateway Pod and private-state initializer on trusted nodes.
 After Harness readiness, preparation starts a candidate Gateway if its predecessor is stopped or unready. Activation waits for workspace node enrollment. Dedicated Codex keeps `agent-<agent digest>-workspace` across versions.
-For a Compute-owned dedicated Harness, `runtime.harnessRuntimeClassName` leaves
-the default template unchanged when absent or blank. A configured name selects
-the Harness Pod's RuntimeClass and whole-volume workspace layout. The private
-init container links persistent paths into the existing claim. Preparation and
-activation read the selected class from the Deployment template and one ready
-Harness Pod; a missing class or eligible node leaves the Agent unready. The
-Gateway template is unchanged. See the [RuntimeClass reference](../reference/drivers/kubernetes-compute.md#configuration).
 `KubernetesComputeDriver.gatewayNativeHookRelayConfiguration` binds its callbacks to the Agent route; `AGENT_WITH_NODE_ENTRYPOINT` prepares private capability storage and TLS trust, and OpenClaw authorizes callbacks. See [native hook routing](../reference/gateway-routing.md#native-node-endpoint).
 
 Compute owns the Gateway; SandboxDriver owns the native Harness, with separate
@@ -317,8 +310,6 @@ owns claim sizes, mounts, StorageClass requirements and final teardown.
 [keep this for the user to add notes. do not change between edits]
 
 ## Changelog
-
-- 2026-10-27 15:25: Trace the optional dedicated Harness RuntimeClass and readiness check. (authoring-run/f826be86-eb99-46ad-b2e4-ecdf6b3a0bd8 - 3ece0cfe3)
 
 - 2026-10-26 23:35: Trace the model tool policy in both Gateway administration modes and recovery after a forced stop. (authoring-run/5da38bb7-602c-4a49-a7f2-863af81abcba - fac7d121c3c582afb53ca49c7d4579e04b5e5ea5)
 

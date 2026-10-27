@@ -215,18 +215,6 @@ OCC_TEST_QA_MATRIX=1 node --env-file="$TEST_ENV_FILE" \
   --test tests/integration/qa-matrix-real.test.mjs
 ```
 
-On a qualified KVM runner, `OCC_TEST_KATA_RUNTIME_CLASS` sets the optional
-Harness RuntimeClass on the QA Installation; the Codex model and repository
-scenarios then use that class. The runner must install and verify Kata first.
-
-The manual [Kata Harness Integration](../../.github/workflows/kata-harness-integration.yml)
-workflow runs the real k3d model lane on an ephemeral runner labeled
-`kata-kvm-ephemeral`. Its operator must supply `/dev/kvm`, Kata at `/opt/kata`,
-and `/etc/oce-kata/config-v3.toml.tmpl` with the
-`kata-qemu-runtime-rs` handler. Guest seccomp must be enabled. The job checks
-these prerequisites before preparing its disposable cluster. It cannot run
-until that runner is registered; ordinary CI remains unchanged.
-
 #### Scenarios
 
 | Scenario          | In advisory | Presets         | Checks                                                                                                      |
