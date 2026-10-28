@@ -21,6 +21,8 @@ An operator can select a RuntimeClass for Compute-owned dedicated Harnesses. An 
 4. Document operator setup and verification in the Kubernetes reference and guide. Update the source-backed Harness execution flow. The operator owns Kata installation, node placement, RuntimeClass scheduling and overhead, SELinux policy, KVM, and VM attestation.
 5. Extend the existing real k3d Agent workflow on a qualified KVM runner. Register a separate Kata CI variant without changing the ordinary lane.
 
+OpenShell owns a separate Harness path and already accepts its RuntimeClass through the Sandbox Driver. Keep it outside this delivery. A later OpenShell qualification must first replace or otherwise resolve the current `subPath` mounts for Kata, then prove the real provider-owned Agent workflow and runtime boundary. The RFC records this future integration point.
+
 ## Required verification
 
 - Compare unset and blank configuration with the current Harness and Gateway manifests. Confirm the selected Harness has the exact class and no `subPath` mount, including optional repository material.
