@@ -15,7 +15,7 @@ author: cooktheryan
 
 ## Summary
 
-Add one server-managed **Agent Author** Role that an Installation administrator can assign to a human Principal in one Namespace. The Role permits Agent lifecycle and the supporting Configuration, Secret, and credential-source work in that Namespace. No user receives it by default. Existing custom Namespace Roles remain exact-resource grants and cannot gain `create` permissions.
+Add one server-managed **Agent Author** Role that an Installation administrator can assign to a human Principal in one Namespace. The user signs in to the existing OCC Console and creates and manages Agents there. The Role permits the Agent lifecycle and supporting Configuration, Secret, and credential-source work in that Namespace. No user receives it by default. Existing custom Namespace Roles remain exact-resource grants and cannot gain `create` permissions.
 
 ## Motivation
 
@@ -26,6 +26,7 @@ An administrator currently has to create and prepare an Agent for a user, then g
 ## Goals
 
 - Let an Installation administrator explicitly grant one human user Agent-author permissions in one Namespace.
+- Let an assigned user create and manage Agents in the existing OCC Console without Installation administration.
 - Support creating and managing Agents and the Namespace resources needed to configure and deploy them.
 - Keep unassigned users at their current permissions and preserve Restrictions, audit evidence, and Namespace isolation.
 - Grant each Agent's ServicePrincipal `operate` only on the credential resources explicitly bound to that Agent.
@@ -35,6 +36,7 @@ An administrator currently has to create and prepare an Agent for a user, then g
 - A general fixed-role catalogue, Groups, arbitrary Namespace-wide custom Roles, or user-managed IAM policy.
 - ServiceAccount creation, credential issuance, Installation administration, Namespace creation, Native admin access, or SandboxPolicy editing.
 - Console-based IAM administration; current policy management uses the API and CLI.
+- Kubernetes RoleBindings for end users or Agent CRDs. OCC Agents are managed through OCC APIs; Kubernetes workload RBAC does not grant OCC permissions.
 - AWS-specific behavior. AWS is a validation environment only.
 
 ## Proposal
@@ -44,6 +46,8 @@ The selected IAM Driver continues to own identity resolution and authorization d
 `POST /namespaces/:namespaceId/iam/roles` accepts the preset body `{ "preset": "agent-author" }` and returns the immutable canonical Role with ID `role_<namespaceId>_agent_author`. It does not accept caller-supplied permissions or a name for this preset. Repeating the request returns the same Role if its stored permissions match; a conflicting Role at that ID fails with `409`.
 
 `POST /namespaces/:namespaceId/iam/access-bindings` accepts `{ "subjectKind": "identity", "subjectId": "<human-principal-id>", "roleId": "<agent-author-role-id>", "scope": "namespace" }`. The IAM Driver must support an untargeted Namespace AccessBinding in its transactional write contract. This is the only Namespace-scoped binding variant: it rejects Groups, ServicePrincipals, arbitrary Roles, and any other Namespace-wide binding. Existing exact-resource binding requests keep their current shape. Creating or assigning the preset still requires the current Installation `administer` and Namespace `read` checks. A missing assignment grants nothing.
+
+An assigned user uses the existing OCC Console. The current Agent creation page can start from a Preset and also permits custom Configuration values. This proposal supports that existing build-your-own workflow within the assigned Namespace. A Preset-only workflow needs a server-enforced contract; hiding Configuration controls in the Console would not restrict API clients.
 
 The Role grants these permissions throughout the assigned Namespace:
 
@@ -63,7 +67,7 @@ This scope lets the assigned user manage existing and future resources of those 
 
 The Role preset is the only path that can create a Namespace-scoped binding with `create` Permissions. The general Role API continues to reject custom Roles with `create`; the general AccessBinding API continues to reject Namespace-scoped bindings for other Roles. The preset cannot be updated; it can be deleted only when unbound and recreated through the preset request. Existing exact-resource bindings keep their current request shape and behavior.
 
-When an author creates or updates an Agent with bound Secrets or credential sources, OCC verifies the author's `operate` permission and transactionally grants the Agent ServicePrincipal `operate` on those exact references. It removes only bindings created by this mechanism when an Agent no longer uses a reference or is deleted; it preserves administrator-created bindings. Audit records include the exact grants and removals. A selected IAM Driver that cannot join the State transaction fails the operation before partial policy or Agent changes commit. Restrictions still override the author's permissions.
+When an author creates or updates an Agent with bound Secrets or credential sources, OCC verifies the author's `operate` permission and transactionally grants the Agent ServicePrincipal `operate` on those exact references. This lets the existing Console complete credential setup without asking the user to administer IAM policy. OCC removes only bindings created by this mechanism when an Agent no longer uses a reference; it preserves administrator-created bindings. Agent deletion removes bindings for its deleted ServicePrincipal through the existing cleanup path. Audit records include the exact grants and removals. A selected IAM Driver that cannot join the State transaction fails the operation before partial policy or Agent changes commit. Restrictions still override the author's permissions.
 
 Namespace Role and AccessBinding writes remain under the existing IAM policy transaction and audit path. Revoking the user's binding denies later requests but does not stop a running Agent or revoke credentials already delivered to it.
 
@@ -71,7 +75,7 @@ Namespace Role and AccessBinding writes remain under the existing IAM policy tra
 
 Keeping current behavior would preserve least privilege but would continue to require an administrator for every new Agent and its dependencies. Allowing arbitrary Namespace-scoped Roles and `create` Permissions would make the feature flexible, but would reopen broad policy delegation that [RFC-0006](0006-basic-rbac/index.md) defers. One fixed, administrator-assigned preset supports the requested workflow while keeping the new authority explicit and reviewable.
 
-The chosen Role is intentionally Namespace-wide. A creator-only model would require a separate ownership and automatic-grant contract. The broader choice means any assigned user can use or delete matching resources already in the Namespace; operators must assign it only where that authority is acceptable.
+The chosen Role is intentionally Namespace-wide. A creator-only model would require a separate ownership and automatic-grant contract. The broader choice means any assigned user can use or delete matching resources already in the Namespace; operators must assign it only where that authority is acceptable. This MVP uses the existing editable Agent Configuration workflow. If the product needs template-only creation, that requires an API restriction and a separate decision.
 
 ## Delivery and verification
 

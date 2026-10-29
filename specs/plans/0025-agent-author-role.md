@@ -12,7 +12,7 @@ rfc: ../rfcs/0025-agent-author-role.md
 
 ## Outcome and scope
 
-An Installation administrator can assign the managed Agent Author Role to a human Principal in one Namespace. That user can create and manage Agents and the selected supporting resources in that Namespace without Installation administration. No user receives the Role by default. The Role's exact permissions and limits are defined by [RFC-0025](../rfcs/0025-agent-author-role.md).
+An Installation administrator can assign the managed Agent Author Role to a human Principal in one Namespace. That user can sign in to the existing OCC Console and create and manage Agents and the selected supporting resources in that Namespace without Installation administration. No user receives the Role by default. This MVP uses the current editable Configuration workflow; template-only enforcement needs a separate server-side contract. The Role's exact permissions and limits are defined by [RFC-0025](../rfcs/0025-agent-author-role.md).
 
 ## Contract and source touchpoints
 
@@ -23,7 +23,7 @@ Current policy writes are owned by the selected IAM Driver and State transaction
 1. Submit RFC-0025 alone for review before code. Add `POST .../iam/roles` preset input `{preset:"agent-author"}` and `POST .../iam/access-bindings` Namespace-scope input `{subjectKind:"identity",subjectId,roleId,scope:"namespace"}` to the API and CLI. The canonical Role ID is `role_<namespaceId>_agent_author`. Extend the IAM Driver identity lookup contract to resolve a Principal by immutable ID, and its transactional binding contract to create an untargeted Namespace binding. Restrict this scope to that immutable preset and resolved human Principals; keep arbitrary custom Roles and Groups on the current exact-resource contract. Keep administrator authorization, transaction guards, and mutation audit intact.
 2. Apply the RFC's fixed permission set through the selected IAM Driver. Preserve default deny and Restriction precedence. In the Agent create/update/deploy lifecycle, verify the author's permission on each bound credential and transactionally reconcile exact `operate` grants for that Agent ServicePrincipal; remove only these generated bindings when no longer needed. Fail closed when the selected Driver cannot participate in the policy transaction.
 3. Extend the regular Agent workflow integration for an assigned user. Add policy cases for no binding, cross-Namespace requests, unsupported custom Namespace grants, account/service-account limits, source grant isolation, revocation, and transactional failure. Register any new workflow in the QA matrix and CI selection as required. Update authorization, the permissions cheat sheet, the IAM and Agent flows, operator/user guidance, and API/CLI references. Keep the feature cloud-neutral.
-4. After local proof passes, run the same create/configure/deploy/stop/log/delete scenario against the configured disposable `oce-demo` AWS host. Use only the existing host profile, close demo resources, stop the instance after validation, and record exact proof limits. Do not add AWS infrastructure or application settings to OCE.
+4. After local proof passes, run the same create/configure/deploy/stop/log/delete scenario against the configured disposable `oce-demo` AWS host. Use it only as a Kubernetes validation environment; add no AWS IAM policy, product behavior, or application settings. Close demo resources, stop the instance after validation, and record exact proof limits.
 
 ## Verification
 
