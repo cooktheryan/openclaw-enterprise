@@ -9,6 +9,8 @@ import {
 import { AuthorizationDeniedError, OpenClawController } from "../../packages/occ/src/index.ts";
 import { PostgresPlatformState } from "../../packages/occ/src/state/postgres-state.ts";
 import { databaseUrl, requiresPostgres } from "../helpers/postgres-database.mjs";
+import { createTestConfigurationDriver } from "../helpers/configuration-driver.mjs";
+import { waitForLockWaiter } from "../helpers/postgres-lock-waits.mjs";
 
 function identifier(kind) {
   return `${kind}_${randomUUID()}`;
@@ -911,6 +913,190 @@ test(
 
     const saved = await state.read((unit) => unit.iamPolicy.listAccessBindings(namespace.id));
     assert.deepEqual(saved, [binding], "PostgreSQL must persist the untargeted Namespace binding");
+  },
+);
+
+test(
+  "Agent Author mutations reauthorize after waiting for Namespace role revocation",
+  requiresPostgres,
+  async (context) => {
+    const { Pool } = await import("pg");
+    const pool = new Pool({ connectionString: databaseUrl });
+    context.after(() => pool.end());
+    const state = new PostgresPlatformState(pool);
+    const iam = new NativeIAMDriver(state, { id: "postgres-agent-author-revocation" });
+    const { installation, namespace, secret, configuration, agent } =
+      await createNamespaceAgentState(state);
+    const configurationDriver = createTestConfigurationDriver({
+      id: installation.drivers.configuration.id,
+    });
+    await configurationDriver.create({
+      ...configuration,
+      values: { model: "agent-author-revocation-test" },
+    });
+    const principal = await createHumanPrincipal(state);
+    const persisted = await state.loadNativeIAMState(installation.id);
+    const administratorRoleIds = new Set(
+      persisted.roles
+        .filter((role) =>
+          role.permissions.some(
+            (permission) =>
+              permission.action === "administer" && permission.resourceKind === "installation",
+          ),
+        )
+        .map(({ id }) => id),
+    );
+    const administrator = persisted.bindings.find(
+      (binding) => binding.subjectKind === "identity" && administratorRoleIds.has(binding.roleId),
+    );
+    assert.ok(administrator, "the fixture must have a real Installation administrator");
+    const controller = new OpenClawController(installation, { state, recordOperations: false });
+    controller.registerDriver(iam);
+    controller.selectDriver("iam", iam.id);
+    controller.registerDriver(configurationDriver);
+    controller.selectDriver("configuration", configurationDriver.id);
+    const role = await controller.createIAMRole(administrator.subjectId, {
+      namespaceId: namespace.id,
+      preset: "agent-author",
+    });
+    let binding = await controller.createIAMAccessBinding(administrator.subjectId, {
+      namespaceId: namespace.id,
+      subjectKind: "identity",
+      subjectId: principal.id,
+      roleId: role.id,
+      scope: "namespace",
+    });
+    const revokeWhileWaiting = async (operation, label) => {
+      const revocationApplied = deferred();
+      const releaseRevocation = deferred();
+      const revocationPidReady = deferred();
+      let revocation;
+      let pending;
+      try {
+        revocation = controller.transact(async (unit) => {
+          const result = await state.queryInTransaction(unit, "SELECT pg_backend_pid() AS pid", []);
+          revocationPidReady.resolve(Number(result.rows[0].pid));
+          await controller.deleteIAMAccessBinding(
+            administrator.subjectId,
+            namespace.id,
+            binding.id,
+          );
+          revocationApplied.resolve();
+          await releaseRevocation.promise;
+        });
+        const revocationPid = await revocationPidReady.promise;
+        await revocationApplied.promise;
+        pending = operation();
+        await waitForLockWaiter(pool, revocationPid, label, { queryLike: "%FOR UPDATE%" });
+        releaseRevocation.resolve();
+        await revocation;
+        return await pending;
+      } finally {
+        releaseRevocation.resolve();
+        await revocation?.catch(() => {});
+        await Promise.allSettled(pending === undefined ? [] : [pending]);
+      }
+    };
+    const reassignAgentAuthor = async () => {
+      binding = await controller.createIAMAccessBinding(administrator.subjectId, {
+        namespaceId: namespace.id,
+        subjectKind: "identity",
+        subjectId: principal.id,
+        roleId: role.id,
+        scope: "namespace",
+      });
+    };
+
+    const existingAgents = await state.read((unit) => unit.agents.listAgents(namespace.id));
+    await assert.rejects(
+      revokeWhileWaiting(
+        () =>
+          controller.createAgent(principal.id, {
+            namespaceId: namespace.id,
+            name: "Revoked create",
+            configurationId: configuration.id,
+          }),
+        "Agent create waiting behind role revocation",
+      ),
+      AuthorizationDeniedError,
+    );
+    assert.deepEqual(
+      await state.read((unit) => unit.agents.listAgents(namespace.id)),
+      existingAgents,
+    );
+
+    await reassignAgentAuthor();
+    await assert.rejects(
+      revokeWhileWaiting(
+        () =>
+          controller.updateAgent(principal.id, {
+            namespaceId: namespace.id,
+            agentId: agent.id,
+            configurationId: configuration.id,
+          }),
+        "Agent update waiting behind role revocation",
+      ),
+      AuthorizationDeniedError,
+    );
+
+    await reassignAgentAuthor();
+    const exactRole = await controller.createIAMRole(administrator.subjectId, {
+      namespaceId: namespace.id,
+      permissions: [
+        { action: "update", resourceKind: "configuration" },
+        { action: "operate", resourceKind: "secret" },
+      ],
+    });
+    await controller.createIAMAccessBinding(administrator.subjectId, {
+      namespaceId: namespace.id,
+      subjectKind: "identity",
+      subjectId: principal.id,
+      roleId: exactRole.id,
+      resourceKind: "configuration",
+      resourceId: configuration.id,
+    });
+    await controller.createIAMAccessBinding(administrator.subjectId, {
+      namespaceId: namespace.id,
+      subjectKind: "identity",
+      subjectId: principal.id,
+      roleId: exactRole.id,
+      resourceKind: "secret",
+      resourceId: secret.id,
+    });
+
+    // Exact Configuration update and Secret operate grants survive Role removal. That user may
+    // still save this Configuration, but the fresh decision lacks Agent Author, so OCC must not
+    // materialize a new Agent ServicePrincipal credential grant from the removed Role.
+    await revokeWhileWaiting(
+      () =>
+        controller.updateConfiguration(principal.id, {
+          namespaceId: namespace.id,
+          configurationId: configuration.id,
+          values: { model: "exactly-scoped-update-after-revocation" },
+          secretBindings: {
+            EXTERNAL_API_TOKEN: {
+              source: { kind: "secret", id: secret.id, namespaceId: namespace.id },
+              delivery: { type: "env" },
+            },
+          },
+        }),
+      "Configuration update waiting behind role revocation",
+    );
+    const saved = await state.read((unit) =>
+      unit.configurations.findConfiguration(namespace.id, configuration.id),
+    );
+    assert.equal(saved.generation, configuration.generation + 1);
+    assert.deepEqual(saved.secretBindings?.EXTERNAL_API_TOKEN?.source, {
+      kind: "secret",
+      id: secret.id,
+      namespaceId: namespace.id,
+    });
+    const bindings = await state.read((unit) => unit.iamPolicy.listAccessBindings(namespace.id));
+    assert.equal(
+      bindings.some((entry) => entry.subjectId === agent.servicePrincipalId),
+      false,
+      "a stale Agent Author decision must not create a persistent credential grant",
+    );
   },
 );
 

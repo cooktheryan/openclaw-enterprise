@@ -7666,12 +7666,19 @@ export class OpenClawController {
     }
     const values = frozenValues(input.values);
     return this.mutate(async (state) => {
-      const updateAuthorization = await this.authorize(principalId, "update", {
+      await this.authorize(principalId, "update", {
         kind: "configuration",
         id: input.configurationId,
         namespaceId: input.namespaceId,
       });
       const namespace = await this.lockNamespace(state, input.namespaceId);
+      // Namespace policy changes take the same lock. Recheck after waiting so a binding that was
+      // removed first cannot leave stale Agent Author evidence authorizing durable grants.
+      const updateAuthorization = await this.authorize(principalId, "update", {
+        kind: "configuration",
+        id: input.configurationId,
+        namespaceId: namespace.id,
+      });
       const driver = this.configurationDriver();
       const metadata = await state.configurations.lockConfiguration(
         namespace.id,
@@ -9620,10 +9627,13 @@ export class OpenClawController {
         id: input.namespaceId,
         namespaceId: input.namespaceId,
       };
-      const createAuthorization = await this.authorize(principalId, "create", target);
+      await this.authorize(principalId, "create", target);
       await this.authorizeGatewayManagedModeChange(principalId, input.gatewayManagedMode === false);
       this.requireGatewayManagedModeSupport(gatewayManagedMode);
       const namespace = await this.lockNamespace(state, input.namespaceId);
+      // Namespace policy changes take the same lock. Use the fresh decision for creation and
+      // automatic grants after a concurrent Agent Author revocation.
+      const createAuthorization = await this.authorize(principalId, "create", target);
       // Checked after authorization: the conflict names the Namespace state.
       if (namespace.status !== "provisioning" && namespace.status !== "ready") {
         throw new ResourceStateConflictError("The Namespace does not accept new Agents.");
@@ -9996,12 +10006,19 @@ export class OpenClawController {
       input.pluginApprovers === null ? null : normalizeAgentPluginApprovers(input.pluginApprovers);
     this.namespaceIdentity(input.namespaceId);
     return this.mutate(async (state) => {
-      const updateAuthorization = await this.authorize(principalId, "update", {
+      await this.authorize(principalId, "update", {
         kind: "agent",
         id: input.agentId,
         namespaceId: input.namespaceId,
       });
       const namespace = await this.lockNamespace(state, input.namespaceId);
+      // Namespace policy changes take the same lock. Recheck before mutation and use only this
+      // decision to authorize persistent Agent credential grants.
+      const updateAuthorization = await this.authorize(principalId, "update", {
+        kind: "agent",
+        id: input.agentId,
+        namespaceId: namespace.id,
+      });
       const agent = await state.agents.lockAgent(namespace.id, input.agentId);
       if (!agent) {
         throw new ScopeViolationError(
