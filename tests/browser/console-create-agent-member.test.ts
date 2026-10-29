@@ -645,7 +645,12 @@ test("a member without Secret create sees the inline Create Secret action disabl
   await drawer
     .getByText("Choose existing Slack token Secrets before creating the Agent.", { exact: true })
     .waitFor();
-  assert.equal(await drawer.getByText(/or create/).count(), 0);
+  assert.equal(
+    await drawer
+      .getByText("Choose an existing Secret or create a new one.", { exact: true })
+      .count(),
+    0,
+  );
   assert.deepEqual(
     answers.filter((answer) => answer.startsWith("POST ") && answer.includes("/secrets")),
     [],
