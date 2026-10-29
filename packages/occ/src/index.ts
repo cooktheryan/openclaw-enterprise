@@ -7776,17 +7776,14 @@ export class OpenClawController {
           harnessAuth: this.harnessAuthBinding(agent.harnessAuth),
           credentialSources: agent.credentialSources ?? [],
         });
-        if (
-          updateAuthorization.decision.evidence.roleIds.includes(agentAuthorRoleId(namespace.id))
-        ) {
-          await this.ensureAgentOperateGrants(
-            state,
-            namespace.id,
-            agent,
-            grantSources,
-            principalId,
-          );
-        }
+        await this.ensureAgentOperateGrants(
+          state,
+          namespace.id,
+          agent,
+          grantSources,
+          principalId,
+          updateAuthorization.decision.evidence.roleIds.includes(agentAuthorRoleId(namespace.id)),
+        );
       }
       return saved;
     });
@@ -9738,7 +9735,14 @@ export class OpenClawController {
         credentialSources: credentialSources ?? [],
       });
       if (createAuthorization.decision.evidence.roleIds.includes(agentAuthorRoleId(namespace.id))) {
-        await this.ensureAgentOperateGrants(state, namespace.id, agent, grantSources, principalId);
+        await this.ensureAgentOperateGrants(
+          state,
+          namespace.id,
+          agent,
+          grantSources,
+          principalId,
+          true,
+        );
       }
       return agent;
     });
@@ -10182,15 +10186,14 @@ export class OpenClawController {
         harnessAuth: requestedAuth === undefined ? previousAuth : requestedAuth,
         credentialSources: updated.credentialSources ?? [],
       });
-      if (updateAuthorization.decision.evidence.roleIds.includes(agentAuthorRoleId(namespace.id))) {
-        await this.ensureAgentOperateGrants(
-          state,
-          namespace.id,
-          updated,
-          grantSources,
-          principalId,
-        );
-      }
+      await this.ensureAgentOperateGrants(
+        state,
+        namespace.id,
+        updated,
+        grantSources,
+        principalId,
+        updateAuthorization.decision.evidence.roleIds.includes(agentAuthorRoleId(namespace.id)),
+      );
       const activeApprovals = (
         await state.repositorySessions.listStandingApprovals(namespace.id, agent.id)
       ).filter((a) => !a.revokedAt);
@@ -13295,7 +13298,14 @@ export class OpenClawController {
         harnessAuth: plan.harnessAuth,
         credentialSources: agent.credentialSources ?? [],
       });
-      await this.ensureAgentOperateGrants(state, namespace.id, agent, grantSources, record.actorId);
+      await this.ensureAgentOperateGrants(
+        state,
+        namespace.id,
+        agent,
+        grantSources,
+        record.actorId,
+        true,
+      );
       return this.commitProvisioningCheckpoint(state, claim, {
         completedPhase: "configuration",
         status: "running",
@@ -13447,12 +13457,17 @@ export class OpenClawController {
     return Object.freeze(sources);
   }
 
+  /**
+   * Reconcile exact Agent credential grants. A fresh Agent Author decision permits new grants;
+   * any authorized update can still remove obsolete generated grants.
+   */
   private async ensureAgentOperateGrants(
     state: PlatformUnitOfWork,
     namespaceId: string,
     agent: Readonly<Agent>,
     sources: readonly (SecretReference | CredentialSourceReference)[],
     actorId: string,
+    allowCreateGrants: boolean,
   ): Promise<void> {
     const desired = new Map<string, SecretReference | CredentialSourceReference>();
     const add = (source: SecretReference | CredentialSourceReference) => {
@@ -13513,13 +13528,14 @@ export class OpenClawController {
     const stale = ownedBindings.filter(
       (binding) => !desired.has(`${binding.resourceKind}\u0000${binding.resourceId}`),
     );
-    if (wanted.length === 0 && stale.length === 0) {
+    if ((!allowCreateGrants || wanted.length === 0) && stale.length === 0) {
       return;
     }
     const driver = this.iamPolicyDriver("createNamespaceAccessBinding");
     if (
       driver.namespacePolicyTransaction !== "platform-unit-of-work" ||
-      (wanted.length > 0 &&
+      (allowCreateGrants &&
+        wanted.length > 0 &&
         (typeof driver.createNamespaceRole !== "function" ||
           typeof driver.createNamespaceAccessBinding !== "function")) ||
       (stale.length > 0 && typeof driver.deleteNamespaceAccessBinding !== "function")
@@ -13528,7 +13544,9 @@ export class OpenClawController {
         "The selected IAM Driver does not support the required transactional Agent credential grants and cleanup.",
       );
     }
-    for (const resourceKind of ["secret", "credential_source"] as const) {
+    for (const resourceKind of allowCreateGrants
+      ? (["secret", "credential_source"] as const)
+      : []) {
       const matching = wanted.filter((source) => source.kind === resourceKind);
       if (matching.length === 0) {
         continue;

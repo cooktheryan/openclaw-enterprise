@@ -1192,7 +1192,7 @@ test(
       namespaceId: namespace.id,
       preset: "agent-author",
     });
-    await controller.createIAMAccessBinding(administrator.subjectId, {
+    const authorBinding = await controller.createIAMAccessBinding(administrator.subjectId, {
       namespaceId: namespace.id,
       subjectKind: "identity",
       subjectId: principal.id,
@@ -1237,9 +1237,39 @@ test(
       resourceId: secret.id,
     });
 
-    // Old product grants and administrator-created grants share the Agent ServicePrincipal.
-    // Reconciliation must identify only the legacy generated ID when the Configuration no longer
-    // refers to the Secret, and leave the independent administrator grant effective.
+    const exactUpdateRole = await controller.createIAMRole(administrator.subjectId, {
+      namespaceId: namespace.id,
+      permissions: [
+        { action: "read", resourceKind: "configuration" },
+        { action: "update", resourceKind: "configuration" },
+        { action: "operate", resourceKind: "secret" },
+      ],
+    });
+    await controller.createIAMAccessBinding(administrator.subjectId, {
+      namespaceId: namespace.id,
+      subjectKind: "identity",
+      subjectId: principal.id,
+      roleId: exactUpdateRole.id,
+      resourceKind: "configuration",
+      resourceId: configuration.id,
+    });
+    await controller.createIAMAccessBinding(administrator.subjectId, {
+      namespaceId: namespace.id,
+      subjectKind: "identity",
+      subjectId: principal.id,
+      roleId: exactUpdateRole.id,
+      resourceKind: "secret",
+      resourceId: secret.id,
+    });
+    await controller.deleteIAMAccessBinding(
+      administrator.subjectId,
+      namespace.id,
+      authorBinding.id,
+    );
+
+    // Exact update authority still allows this user to remove the Secret after the Namespace
+    // Role is revoked. Cleanup must remove the old generated grant but preserve the independent
+    // administrator grant for the same Agent ServicePrincipal.
     const updated = await controller.updateConfiguration(principal.id, {
       namespaceId: namespace.id,
       configurationId: configuration.id,

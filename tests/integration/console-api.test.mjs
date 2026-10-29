@@ -204,6 +204,11 @@ test("the managed Agent Author Role grants one human Namespace access and exact 
   assertApiError(await fixture.request("GET", "/installation", { session }), 403, "FORBIDDEN");
   assertApiError(await fixture.request("GET", `${iam}/roles`, { session }), 403, "FORBIDDEN");
   assertApiError(
+    await fixture.request("GET", `${iam}/access-bindings`, { session }),
+    403,
+    "FORBIDDEN",
+  );
+  assertApiError(
     await fixture.request("GET", `/namespaces/${otherNamespace.id}/agents`, { session }),
     403,
     "FORBIDDEN",
@@ -258,6 +263,41 @@ test("the managed Agent Author Role grants one human Namespace access and exact 
     ),
     false,
   );
+
+  const replacementSecret = await fixture.createSecret(
+    namespace.id,
+    "author replacement",
+    "synthetic-replacement-key",
+  );
+  const replaced = await fixture.request(
+    "PATCH",
+    `/namespaces/${namespace.id}/agents/${created.data.id}`,
+    {
+      session,
+      body: {
+        configurationId: configuration.data.id,
+        harnessAuth: { method: "api_key", source: replacementSecret.ref },
+      },
+    },
+  );
+  assert.equal(replaced.status, 200, JSON.stringify(replaced.body));
+  const replacementBindings = await fixture.request("GET", `${iam}/access-bindings`);
+  assert.equal(replacementBindings.status, 200, JSON.stringify(replacementBindings.body));
+  assert.deepEqual(
+    replacementBindings.data
+      .filter((binding) => binding.subjectId === created.data.servicePrincipalId)
+      .map(({ resourceId }) => resourceId),
+    [replacementSecret.id],
+    "replacing Agent authentication removes the previous exact Secret grant",
+  );
+
+  const deleted = await fixture.request(
+    "DELETE",
+    `/namespaces/${namespace.id}/agents/${created.data.id}`,
+    { session },
+  );
+  assert.equal(deleted.status, 202, JSON.stringify(deleted.body));
+  assert.equal(deleted.data.status, "deleting");
 });
 
 // The Secrets page disables Create Secret on a false answer (finding 2365), so the answer must be

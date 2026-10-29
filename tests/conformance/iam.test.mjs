@@ -734,6 +734,17 @@ test("the IAM Driver resolves a human Principal by immutable ID and rejects serv
     }),
     undefined,
   );
+  assert.equal(
+    await driver.lookupIdentity({
+      principalId: "principal-reader-a",
+      namespaceId: "namespace-a",
+      unsupported: true,
+    }),
+    undefined,
+  );
+  const inheritedLookup = Object.create({ principalId: "principal-reader-a" });
+  inheritedLookup.namespaceId = "namespace-a";
+  assert.equal(await driver.lookupIdentity(inheritedLookup), undefined);
 });
 
 test("ordinary service principals keep explicitly scoped platform grants", async () => {

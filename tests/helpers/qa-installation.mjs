@@ -35,6 +35,47 @@ function execute(command, args, options) {
   });
 }
 const repository = resolve(import.meta.dirname, "../..");
+
+async function runQaPolicyFixtureQuery(f, sql, variables) {
+  const values = Object.entries(variables).flatMap(([name, value]) => {
+    if (!/^[a-z_]+$/.test(name) || typeof value !== "string" || !/^[a-zA-Z0-9_-]+$/.test(value)) {
+      throw new Error("Invalid QA policy fixture input.");
+    }
+    return ["--set", `${name}=${value}`];
+  });
+  return runQaCommand(
+    f,
+    "kubectl",
+    [
+      "--kubeconfig",
+      join(f.stateDirectory, "kubeconfig"),
+      "--context",
+      `k3d-${f.cluster}`,
+      "-n",
+      f.state.platformNamespace,
+      "exec",
+      "-i",
+      "statefulset/postgres",
+      "-c",
+      "postgres",
+      "--",
+      "psql",
+      "-X",
+      "-q",
+      "-t",
+      "-A",
+      "--set",
+      "ON_ERROR_STOP=1",
+      ...values,
+      "--username",
+      "postgres",
+      "--dbname",
+      "openclaw_enterprise",
+    ],
+    { input: sql },
+  );
+}
+
 export function launcherEnvironment() {
   // Runtime credentials are delivered later through the Secret API. Never pass
   // the matrix's model, sender, or GitHub observer credentials to the launcher.
@@ -475,46 +516,20 @@ export async function createQaInstallation(
         ...args,
       ]);
     },
-    async database(sql, variables = {}) {
-      const values = Object.entries(variables).flatMap(([name, value]) => {
-        if (
-          !/^[a-z_]+$/.test(name) ||
-          typeof value !== "string" ||
-          !/^[a-zA-Z0-9_-]+$/.test(value)
-        ) {
-          throw new Error("Invalid QA database input.");
-        }
-        return ["--set", `${name}=${value}`];
-      });
-      return f.run(
-        "kubectl",
-        [
-          "--kubeconfig",
-          join(stateDirectory, "kubeconfig"),
-          "--context",
-          `k3d-${cluster}`,
-          "-n",
-          f.state.platformNamespace,
-          "exec",
-          "-i",
-          "statefulset/postgres",
-          "-c",
-          "postgres",
-          "--",
-          "psql",
-          "-X",
-          "-q",
-          "-t",
-          "-A",
-          "--set",
-          "ON_ERROR_STOP=1",
-          ...values,
-          "--username",
-          "postgres",
-          "--dbname",
-          "openclaw_enterprise",
-        ],
-        { input: sql },
+    async seedAgentCreateRestriction(namespaceId, restrictionId) {
+      return runQaPolicyFixtureQuery(
+        f,
+        `INSERT INTO occ.iam_restrictions
+           (id, namespace_id, action, resource_kind, resource_id, effect)
+         VALUES (:'id', :'namespace_id', 'create', 'agent', NULL, 'deny')`,
+        { id: restrictionId, namespace_id: namespaceId },
+      );
+    },
+    async removeAgentCreateRestriction(restrictionId) {
+      return runQaPolicyFixtureQuery(
+        f,
+        "DELETE FROM occ.iam_restrictions WHERE id = :'id' AND action = 'create' AND resource_kind = 'agent'",
+        { id: restrictionId },
       );
     },
     async get(kind, name, namespace) {

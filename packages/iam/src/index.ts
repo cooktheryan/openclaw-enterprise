@@ -1129,12 +1129,27 @@ export class NativeIAMDriver implements IAMDriver {
   }
 
   async lookupIdentity(input: IdentityLookup): Promise<Identity | undefined> {
-    if (typeof input !== "object" || input === null || Object.hasOwn(input, "installationId")) {
+    if (
+      typeof input !== "object" ||
+      input === null ||
+      (Object.getPrototypeOf(input) !== Object.prototype && Object.getPrototypeOf(input) !== null)
+    ) {
       return undefined;
     }
-    const hasPrincipalId = input.principalId !== undefined;
-    const hasServicePrincipalId = input.servicePrincipalId !== undefined;
-    const hasExternalIdentity = input.issuer !== undefined || input.subject !== undefined;
+    const allowedKeys = new Set([
+      "principalId",
+      "servicePrincipalId",
+      "issuer",
+      "subject",
+      "namespaceId",
+    ]);
+    const ownKeys = Object.keys(input);
+    if (ownKeys.some((key) => !allowedKeys.has(key))) {
+      return undefined;
+    }
+    const hasPrincipalId = Object.hasOwn(input, "principalId");
+    const hasServicePrincipalId = Object.hasOwn(input, "servicePrincipalId");
+    const hasExternalIdentity = Object.hasOwn(input, "issuer") || Object.hasOwn(input, "subject");
     if (
       [hasPrincipalId, hasServicePrincipalId, hasExternalIdentity].filter(Boolean).length !== 1 ||
       (hasPrincipalId && !isNonEmptyString(input.principalId)) ||

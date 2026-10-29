@@ -124,6 +124,10 @@ export async function createQaBrowser(f, { themed, artifactsDirectory }) {
   return {
     nativeOrigin: f.controlPlane === "compose" ? nativeOrigin : undefined,
     async verifyAgentAuthor(presetName, nameSuffix, verify) {
+      if (typeof artifactsDirectory !== "string" || artifactsDirectory.length === 0) {
+        throw new Error("The Agent Author Console walkthrough requires an artifacts directory.");
+      }
+      await mkdir(artifactsDirectory, { recursive: true, mode: 0o700 });
       const nameLabel = nameSuffix.replace(/^-/, "");
       const email = `qa-agent-author-${randomUUID()}@example.test`;
       const password = `qa-agent-author-${randomUUID()}-Password`;
@@ -230,6 +234,15 @@ export async function createQaBrowser(f, { themed, artifactsDirectory }) {
           const current = await f.api("GET", `/namespaces/${otherNamespace.id}`);
           return current.status === "ready" ? current : undefined;
         });
+        const otherConfiguration = await f.api(
+          "POST",
+          `/namespaces/${otherNamespace.id}/configurations`,
+          { kind: "agent", values: {} },
+        );
+        const otherSecret = await f.api("POST", `/namespaces/${otherNamespace.id}/secrets`, {
+          name: `qa-agent-author-cross-${nameLabel}`,
+          value: `synthetic-cross-namespace-${randomUUID()}`,
+        });
 
         assert.deepEqual(
           (await request("GET", "/namespaces")).map(({ id }) => id),
@@ -241,24 +254,33 @@ export async function createQaBrowser(f, { themed, artifactsDirectory }) {
           "GET",
           `/namespaces/${f.namespace.id}/iam/access-bindings`,
         );
+        const otherBindingsBefore = await f.api(
+          "GET",
+          `/namespaces/${otherNamespace.id}/iam/access-bindings`,
+        );
         await request(
           "POST",
           `/namespaces/${otherNamespace.id}/agents`,
           {
             name: `qa-cross-namespace-${nameLabel}`,
-            configurationId: deniedConfiguration.id,
+            configurationId: otherConfiguration.id,
             harnessAuth: {
               method: "api_key",
               source: {
                 kind: "secret",
-                namespaceId: f.namespace.id,
-                id: `sec_${randomUUID()}`,
+                namespaceId: otherNamespace.id,
+                id: otherSecret.id,
               },
             },
           },
           403,
         );
-        await request("GET", `/namespaces/${otherNamespace.id}/secrets`, undefined, 403);
+        await request(
+          "GET",
+          `/namespaces/${otherNamespace.id}/secrets/${otherSecret.id}`,
+          undefined,
+          403,
+        );
         assert.equal(
           (await f.api("GET", `/namespaces/${otherNamespace.id}/agents`)).some(
             ({ name }) => name === `qa-cross-namespace-${nameLabel}`,
@@ -270,6 +292,11 @@ export async function createQaBrowser(f, { themed, artifactsDirectory }) {
           await f.api("GET", `/namespaces/${f.namespace.id}/iam/access-bindings`),
           beforeCrossNamespace,
           "cross-Namespace denials must not create credential grants",
+        );
+        assert.deepEqual(
+          await f.api("GET", `/namespaces/${otherNamespace.id}/iam/access-bindings`),
+          otherBindingsBefore,
+          "cross-Namespace denials must not change grants in the target Namespace",
         );
 
         const selected = (await request("GET", `/namespaces/${f.namespace.id}/presets`)).find(
@@ -284,7 +311,7 @@ export async function createQaBrowser(f, { themed, artifactsDirectory }) {
         );
         const model =
           process.env[codex ? "OCC_TEST_QA_CODEX_MODEL" : "OCC_TEST_QA_OPENAI_MODEL"] ||
-          "gpt-6-luna";
+          (codex ? "codex/gpt-5" : "gpt-6-luna");
         const rendered = renderPresetTemplate(preset.template, {
           name: `qa-${f.suffix}-${presetName}-${nameLabel}-author`,
           model,
@@ -313,12 +340,8 @@ export async function createQaBrowser(f, { themed, artifactsDirectory }) {
         const restrictionId = `qa-agent-author-${randomUUID()}`;
         // Restrictions have no public creation route; seed one policy row, then exercise its
         // decision through the real signed-in API before the row is removed.
-        await f.database(
-          `INSERT INTO occ.iam_restrictions
-             (id, namespace_id, action, resource_kind, resource_id, effect)
-           VALUES (:'id', :'namespace_id', 'create', 'agent', NULL, 'deny')`,
-          { id: restrictionId, namespace_id: f.namespace.id },
-        );
+        await f.seedAgentCreateRestriction(f.namespace.id, restrictionId);
+        f.resources.after(() => f.removeAgentCreateRestriction(restrictionId));
         const beforeRestrictedCreate = await f.api(
           "GET",
           `/namespaces/${f.namespace.id}/iam/access-bindings`,
@@ -350,9 +373,7 @@ export async function createQaBrowser(f, { themed, artifactsDirectory }) {
             "a Restriction denial must not persist the Agent",
           );
         } finally {
-          await f.database("DELETE FROM occ.iam_restrictions WHERE id = :'id'", {
-            id: restrictionId,
-          });
+          await f.removeAgentCreateRestriction(restrictionId);
         }
 
         const createAgentUrl = `${f.consoleUrl}/console/agents/new?namespace=${f.namespace.id}`;
@@ -560,6 +581,15 @@ export async function createQaBrowser(f, { themed, artifactsDirectory }) {
           const agents = await f.api("GET", `/namespaces/${f.namespace.id}/agents`);
           return !agents.some(({ id }) => id === agent.id);
         });
+        const afterDeleteBindings = await f.api(
+          "GET",
+          `/namespaces/${f.namespace.id}/iam/access-bindings`,
+        );
+        assert.equal(
+          afterDeleteBindings.some((candidate) => candidate.subjectId === agent.servicePrincipalId),
+          false,
+          "Agent deletion must remove its generated credential grants",
+        );
         agent.stopped = true;
         await f.record(`${presetName}-agent-author`, {
           principalId,

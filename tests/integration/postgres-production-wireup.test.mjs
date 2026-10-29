@@ -1135,6 +1135,7 @@ test(
                 ]);
                 pendingUpdate = fetch(`${endpoint}${configurationPath}`, {
                   method: "PATCH",
+                  signal: AbortSignal.timeout(120_000),
                   headers: authenticatedHeaders(assigning, {
                     origin: authBaseURL,
                     "content-type": "application/json",
@@ -1161,6 +1162,7 @@ test(
                 // Agent credential grant before logout can revoke the assigning session.
                 pendingLogout = fetch(`${replicaEndpoint}/api/auth/sign-out`, {
                   method: "POST",
+                  signal: AbortSignal.timeout(120_000),
                   headers: authenticatedHeaders(assigning, { origin: authBaseURL }),
                 });
                 await waitForLockWaiter(
