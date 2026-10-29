@@ -257,11 +257,16 @@ it only after all its AccessBindings are removed.
 | `credential_source`                           | `create`, `read`, `update`, `delete`, `operate`                        |
 | `service_account`, `preset`, `sandbox_policy` | `read`                                                                 |
 
-The grant covers matching resources already in the Namespace and resources
-created later. It can manage another person's Agents and use every Secret in
-that Namespace. Assign it only where users may share that authority. It grants
-no Installation administration, IAM policy management, or ServiceAccount
-creation. A Restriction can still deny an operation.
+The grant covers existing and future matching resources, including other people's
+Agents and every Secret in the Namespace. Treat assignees as trusted credential
+consumers: their Agents can use or expose supplied credentials even though metadata
+APIs hide the values. Use separate Namespaces for users who must not share resource
+or credential authority. OCC scope does not establish runtime isolation; see
+[Agent runtime security](security/runtime-isolation.md) for workload and network limits.
+The Role grants no Installation or IAM administration, ServiceAccount creation,
+or ServiceAccount credential issuance. Restrictions still apply. Agent `operate`
+permits initial Agent runtime credential provisioning under existing Agent read
+and lifecycle checks.
 
 When an Agent Author creates or updates an Agent with credential references,
 OCC grants that Agent's ServicePrincipal `operate` only on those Secrets and

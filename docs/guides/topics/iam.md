@@ -113,15 +113,16 @@ A new account starts with no access. As a human Installation administrator:
    rm role.json binding.json
    ```
 
-   This assignment is for the human `principalId`; it does not grant that
-   person Kubernetes API access. The person can manage every Agent and its
-   Configurations, Secrets, and credential sources in the assigned Namespace.
-   The Role also lets them use any Secret in that Namespace, so assign it only
-   where that shared access is intended. It does not grant Installation or IAM
-   administration, or ServiceAccount creation. A matching Restriction still
-   denies an operation. Removing the AccessBinding prevents later OCC requests;
-   it does not stop running Agents or revoke credentials already delivered. See
-   [Agent Author permissions](../../reference/authorization.md#agent-author-role).
+   This assignment gives the human shared authority over matching resources in
+   the Namespace, including other people's Agents and every Secret. Their Agents
+   can consume or expose supplied credentials even though metadata APIs hide
+   the values. Provision separate Namespaces for users who must not share that
+   authority. OCC scope does not establish runtime isolation. Review
+   [Agent Author permissions and limits](../../reference/authorization.md#agent-author-role)
+   before assigning it. A matching Restriction still denies an operation.
+   Removing the AccessBinding prevents later OCC requests; it does not stop
+   running Agents or retract delivered credentials. The assignment grants no
+   Kubernetes API access.
 
 5. For a person who signs in with a password, give them the password from
    `account.json` through your own secure channel, then delete the file.
