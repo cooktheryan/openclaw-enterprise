@@ -286,7 +286,7 @@ export async function createQaBrowser(f, { themed, artifactsDirectory }) {
           process.env[codex ? "OCC_TEST_QA_CODEX_MODEL" : "OCC_TEST_QA_OPENAI_MODEL"] ||
           "gpt-6-luna";
         const rendered = renderPresetTemplate(preset.template, {
-          name: `qa-${f.suffix}-${presetName}-${nameLabel}`,
+          name: `qa-${f.suffix}-${presetName}-${nameLabel}-author`,
           model,
           modelSecret: "provided-through-secret-api",
         });
