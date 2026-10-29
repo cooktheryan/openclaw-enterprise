@@ -43,14 +43,22 @@ async function runQaPolicyFixtureQuery(f, sql, variables) {
     }
     return ["--set", `${name}=${value}`];
   });
-  return runQaCommand(
-    f,
-    "kubectl",
-    [
-      "--kubeconfig",
-      join(f.stateDirectory, "kubeconfig"),
-      "--context",
-      `k3d-${f.cluster}`,
+  const psql = [
+    "psql",
+    "-X",
+    "-q",
+    "-t",
+    "-A",
+    "--set",
+    "ON_ERROR_STOP=1",
+    ...values,
+    "--username",
+    "postgres",
+    "--dbname",
+    "openclaw_enterprise",
+  ];
+  if (f.state.deploymentMode === "k3d") {
+    return f.kubectl(
       "-n",
       f.state.platformNamespace,
       "exec",
@@ -59,21 +67,14 @@ async function runQaPolicyFixtureQuery(f, sql, variables) {
       "-c",
       "postgres",
       "--",
-      "psql",
-      "-X",
-      "-q",
-      "-t",
-      "-A",
-      "--set",
-      "ON_ERROR_STOP=1",
-      ...values,
-      "--username",
-      "postgres",
-      "--dbname",
-      "openclaw_enterprise",
-    ],
-    { input: sql },
-  );
+      ...psql,
+      { input: sql },
+    );
+  }
+  if (f.state.deploymentMode === "compose") {
+    return f.compose("exec", "-T", "postgres", ...psql, { input: sql });
+  }
+  throw new Error("The QA policy fixture requires a Compose or k3d PostgreSQL owner.");
 }
 
 export function launcherEnvironment() {
