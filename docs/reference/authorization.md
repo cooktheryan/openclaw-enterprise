@@ -265,8 +265,11 @@ creation. A Restriction can still deny an operation.
 
 When an Agent Author creates or updates an Agent with credential references,
 OCC grants that Agent's ServicePrincipal `operate` only on those Secrets and
-credential sources in the same transaction. OCC removes generated grants that
-become unused after a replacement revision starts. Revoking the human binding
+credential sources in the same transaction. Cleanup retains grants used by the
+current draft, the active revision, and revisions with queued or claimed deployment
+work. A later draft edit cannot remove a pending deployment’s credential grants.
+OCC removes unused generated grants during subsequent mutation or activation
+reconciliation after that work ends. Revoking the human binding
 denies later OCC requests but does not stop running Agents or revoke credentials
 already delivered to them. This does not grant Kubernetes API access or create
 a Kubernetes RoleBinding.

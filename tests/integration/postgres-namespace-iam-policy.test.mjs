@@ -7,6 +7,7 @@ import {
   NativeIAMDriver,
 } from "../../packages/iam/src/index.ts";
 import { AuthorizationDeniedError, OpenClawController } from "../../packages/occ/src/index.ts";
+import { PostgresWorkQueue } from "../../packages/occ/src/state/postgres-work-queue.ts";
 import { PostgresPlatformState } from "../../packages/occ/src/state/postgres-state.ts";
 import { databaseUrl, requiresPostgres } from "../helpers/postgres-database.mjs";
 import { createTestConfigurationDriver } from "../helpers/configuration-driver.mjs";
@@ -1216,7 +1217,7 @@ test(
     const state = new PostgresPlatformState(pool);
     const iam = new NativeIAMDriver(state, { id: "postgres-agent-author-legacy-grants" });
     const { installation, namespace, secret, configuration, agent } =
-      await createNamespaceAgentState(state);
+      await createNamespaceAgentState(state, { harnessAuth: { method: "runtime" } });
     const configurationDriver = createTestConfigurationDriver({
       id: "configuration-agent-author-legacy-grants",
     });
@@ -1325,6 +1326,70 @@ test(
       authorBinding.id,
     );
 
+    // A draft can drop a credential while an earlier deployment still needs it. Persist a
+    // realistic revision and its queued work, then exercise reconciliation through the caller.
+    const pending = await state.transact(async (unit) => {
+      const revision = await unit.revisions.createRevision({
+        id: identifier("rev"),
+        namespaceId: namespace.id,
+        agentId: agent.id,
+        revision: 1,
+        backendId: null,
+        configurationId: configuration.id,
+        configurationKind: "agent",
+        configurationGeneration: configuration.generation,
+        gatewayManagedMode: true,
+        configuration: {},
+        harness: { id: "test-harness", version: "1.0.0", mode: "embedded" },
+        compute: { id: "test-compute", implementation: "test" },
+        executionAdmission: { version: 2, mode: "unprotected" },
+        harnessAuth: { method: "runtime" },
+        servicePrincipalId: agent.servicePrincipalId,
+        secretBindings: {
+          EXTERNAL_API_TOKEN: {
+            source: { kind: "secret", id: secret.id, namespaceId: namespace.id },
+            delivery: { type: "env" },
+          },
+        },
+        createdAt: new Date().toISOString(),
+      });
+      await unit.operations.append({
+        kind: "agent_revision",
+        action: "reconcile",
+        namespaceId: namespace.id,
+        resourceId: revision.id,
+        actorId: administrator.subjectId,
+      });
+      return revision;
+    });
+    const saveWithoutSecret = () =>
+      controller.updateConfiguration(principal.id, {
+        namespaceId: namespace.id,
+        configurationId: configuration.id,
+        values: { model: "after-cleanup" },
+        secretBindings: {},
+      });
+    const assertPendingGrant = async () => {
+      await saveWithoutSecret();
+      const bindings = await state.read((unit) => unit.iamPolicy.listAccessBindings(namespace.id));
+      assert.ok(
+        bindings.some(({ id }) => id === legacyBinding.id),
+        "a draft edit must retain a credential grant required by unfinished deployment work",
+      );
+    };
+    await assertPendingGrant();
+    // Move only this scenario's work to the front, then use the real queue claim/completion
+    // transitions. Both queued and claimed deployments must retain their exact grants.
+    await pool.query(
+      "UPDATE occ.controller_work SET available_at = '1970-01-01' WHERE revision_id = $1",
+      [pending.id],
+    );
+    const queue = new PostgresWorkQueue(pool);
+    const claim = await queue.claim();
+    assert.equal(claim.revisionId, pending.id);
+    await assertPendingGrant();
+    await queue.complete(claim);
+
     // Exact update authority still allows this user to remove the Secret after the Namespace
     // Role is revoked. Cleanup must remove the old generated grant but preserve the independent
     // administrator grant for the same Agent ServicePrincipal.
@@ -1334,7 +1399,7 @@ test(
       values: { model: "after-cleanup" },
       secretBindings: {},
     });
-    assert.equal(updated.generation, configuration.generation + 1);
+    assert.equal(updated.generation, configuration.generation + 3);
     const bindings = await state.read((unit) => unit.iamPolicy.listAccessBindings(namespace.id));
     assert.equal(
       bindings.some((binding) => binding.id === legacyBinding.id),

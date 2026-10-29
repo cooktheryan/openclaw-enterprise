@@ -1,7 +1,7 @@
 ---
 created: "2026-09-20"
 updated: 2026-10-29
-last_updated_session: "authoring-run/32233c9b-0a2e-4472-ae28-676de3a66fcd"
+last_updated_session: "authoring-run/263f6d06-b03f-40ef-baa6-9563f7b9163a"
 ---
 
 # Namespace IAM Policy Flow
@@ -112,6 +112,16 @@ Namespace identities are refused. Other bindings retain exact resource targets;
 OCC verifies the target exists and the caller can read it before creating the
 binding. `assertAccessBindingRoleApplies` refuses a Role that has no Permission
 for the target kind.
+
+Agent and Configuration writes reconcile generated credential grants through
+`packages/occ/src/index.ts:ensureAgentOperateGrants`. Both this path and worker
+activation cleanup use
+`packages/occ/src/agent-credential-revisions.ts:retainedAgentCredentialRevisions`
+to retain credentials referenced by the active revision or queued and claimed
+deployment work, as well as the current draft. A draft edit cannot withdraw a
+grant from a deployment still in progress. Once that work is terminal, the next
+mutation or activation reconciliation can remove its unused generated grants.
+Independently managed bindings remain unchanged.
 
 ### 4. The IAM Driver persists or reads policy
 
@@ -235,6 +245,8 @@ selected account, session, and policy writers join the same protocol.
 [keep this for the user to add notes. do not change between edits]
 
 ## Changelog
+
+- 2026-10-29 16:08: Retain credential grants for queued and claimed Agent deployments in mutation and activation cleanup. (authoring-run/263f6d06-b03f-40ef-baa6-9563f7b9163a - e309381e526ffeff48f4327413dda8b1a5d4dc9e)
 
 - 2026-10-29 10:06: Document the fixed Agent Author Role, human Principal assignment and untargeted Namespace binding. (authoring-run/32233c9b-0a2e-4472-ae28-676de3a66fcd - 3b9f76e11c3a7ffb5997de61c1e448370c521a92)
 - 2026-10-15 13:28: Retain assigning sessions through policy COMMIT, require transactional IAM writes, and preserve caller limits with shared guarded-session holds. (authoring-run/ec3b3e9d-0724-4b9e-a41d-4eb8a44d4851 - a302a3e2061575b64dcc37e212c55075d5c74b9a)

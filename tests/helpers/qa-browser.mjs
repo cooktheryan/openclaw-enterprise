@@ -340,7 +340,11 @@ export async function createQaBrowser(f, { themed, artifactsDirectory }) {
         const restrictionId = `qa-agent-author-${randomUUID()}`;
         // Restrictions have no public creation route; seed one policy row, then exercise its
         // decision through the real signed-in API before the row is removed.
-        await f.seedAgentCreateRestriction(f.namespace.id, restrictionId);
+        assert.equal(
+          (await f.seedAgentCreateRestriction(f.namespace.id, restrictionId)).trim(),
+          restrictionId,
+          "the Restriction must be persisted before testing denial",
+        );
         f.resources.after(() => f.removeAgentCreateRestriction(restrictionId));
         const beforeRestrictedCreate = await f.api(
           "GET",
@@ -373,7 +377,11 @@ export async function createQaBrowser(f, { themed, artifactsDirectory }) {
             "a Restriction denial must not persist the Agent",
           );
         } finally {
-          await f.removeAgentCreateRestriction(restrictionId);
+          assert.equal(
+            (await f.removeAgentCreateRestriction(restrictionId)).trim(),
+            restrictionId,
+            "the Restriction must be removed before the allowed workflow",
+          );
         }
 
         const createAgentUrl = `${f.consoleUrl}/console/agents/new?namespace=${f.namespace.id}`;
@@ -545,7 +553,14 @@ export async function createQaBrowser(f, { themed, artifactsDirectory }) {
         );
         await verify(agent, request);
 
-        // Revocation denies later human requests; the administrator still owns test cleanup.
+        await request(
+          "POST",
+          `/namespaces/${f.namespace.id}/agents/${agent.id}/stop`,
+          undefined,
+          202,
+        );
+
+        // Revocation denies later human requests, including lifecycle operations.
         await f.api("DELETE", `/namespaces/${f.namespace.id}/iam/access-bindings/${binding.id}`);
         const beforeRevokedRequests = await f.api(
           "GET",
@@ -575,8 +590,22 @@ export async function createQaBrowser(f, { themed, artifactsDirectory }) {
           "revoked requests must not create or alter credential grants",
         );
 
-        await f.api("POST", `/namespaces/${f.namespace.id}/agents/${agent.id}/stop`);
-        await f.api("DELETE", `/namespaces/${f.namespace.id}/agents/${agent.id}`, undefined);
+        await request(
+          "POST",
+          `/namespaces/${f.namespace.id}/agents/${agent.id}/stop`,
+          undefined,
+          403,
+        );
+        await request("DELETE", `/namespaces/${f.namespace.id}/agents/${agent.id}`, undefined, 403);
+        // Explicit reassignment restores the same human's ability to delete; administrator
+        // credentials are used only for policy administration and failure cleanup.
+        await f.api("POST", `/namespaces/${f.namespace.id}/iam/access-bindings`, {
+          subjectKind: "identity",
+          subjectId: principalId,
+          roleId: authorRole.id,
+          scope: "namespace",
+        });
+        await request("DELETE", `/namespaces/${f.namespace.id}/agents/${agent.id}`, undefined, 202);
         await f.waitFor("Agent Author Agent deletion", async () => {
           const agents = await f.api("GET", `/namespaces/${f.namespace.id}/agents`);
           return !agents.some(({ id }) => id === agent.id);
@@ -606,6 +635,9 @@ export async function createQaBrowser(f, { themed, artifactsDirectory }) {
           replacementActivated: true,
           previousCredentialGrantCleanedAfterActivation: true,
           revokedCredentialAccessDenied: true,
+          authorStopAndDelete: true,
+          revokedStopAndDeleteDenied: true,
+          restrictionPersistedAndRemoved: true,
           createdUpdatedDeployedStoppedDeleted: true,
         });
       } finally {

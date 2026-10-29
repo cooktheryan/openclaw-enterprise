@@ -509,27 +509,32 @@ export async function createQaInstallation(
       return path;
     },
     async kubectl(...args) {
-      return f.run("kubectl", [
-        "--kubeconfig",
-        join(stateDirectory, "kubeconfig"),
-        "--context",
-        `k3d-${cluster}`,
-        ...args,
-      ]);
+      const options = typeof args.at(-1) === "object" ? args.pop() : {};
+      return f.run(
+        "kubectl",
+        [
+          "--kubeconfig",
+          join(stateDirectory, "kubeconfig"),
+          "--context",
+          `k3d-${cluster}`,
+          ...args,
+        ],
+        options,
+      );
     },
     async seedAgentCreateRestriction(namespaceId, restrictionId) {
       return runQaPolicyFixtureQuery(
         f,
         `INSERT INTO occ.iam_restrictions
            (id, namespace_id, action, resource_kind, resource_id, effect)
-         VALUES (:'id', :'namespace_id', 'create', 'agent', NULL, 'deny')`,
+         VALUES (:'id', :'namespace_id', 'create', 'agent', NULL, 'deny') RETURNING id`,
         { id: restrictionId, namespace_id: namespaceId },
       );
     },
     async removeAgentCreateRestriction(restrictionId) {
       return runQaPolicyFixtureQuery(
         f,
-        "DELETE FROM occ.iam_restrictions WHERE id = :'id' AND action = 'create' AND resource_kind = 'agent'",
+        "DELETE FROM occ.iam_restrictions WHERE id = :'id' AND action = 'create' AND resource_kind = 'agent' RETURNING id",
         { id: restrictionId },
       );
     },
@@ -561,15 +566,20 @@ export async function createQaInstallation(
       return text ? JSON.parse(text).data : undefined;
     },
     async compose(...args) {
-      return f.run("docker", [
-        "compose",
-        "-p",
-        cluster,
-        "-f",
-        join(stateDirectory, "compose.yaml"),
-        ...(f.consoleThemeComposeFile === undefined ? [] : ["-f", f.consoleThemeComposeFile]),
-        ...args,
-      ]);
+      const options = typeof args.at(-1) === "object" ? args.pop() : {};
+      return f.run(
+        "docker",
+        [
+          "compose",
+          "-p",
+          cluster,
+          "-f",
+          join(stateDirectory, "compose.yaml"),
+          ...(f.consoleThemeComposeFile === undefined ? [] : ["-f", f.consoleThemeComposeFile]),
+          ...args,
+        ],
+        options,
+      );
     },
     async saveInstallation(configuration) {
       await writeFile(join(stateDirectory, "installation.yaml"), dumpYaml(configuration), {

@@ -1,3 +1,6 @@
+import { retainedAgentCredentialRevisions } from "./agent-credential-revisions.ts";
+
+export { retainedAgentCredentialRevisions } from "./agent-credential-revisions.ts";
 import { NativeIAMDriver } from "@openclaw-enterprise/iam";
 import { isReducedCredentialPlan } from "./credential-policy-reduction.ts";
 
@@ -13476,15 +13479,7 @@ export class OpenClawController {
     for (const source of sources) {
       add(source);
     }
-    if (agent.activeRevisionId !== undefined) {
-      const active = await state.revisions.findRevision(
-        namespaceId,
-        agent.id,
-        agent.activeRevisionId,
-      );
-      if (active === undefined) {
-        throw new DependencyUnavailableError("The Agent's active revision is unavailable.");
-      }
+    for (const active of await retainedAgentCredentialRevisions(state, agent)) {
       for (const binding of Object.values(active.secretBindings ?? {})) {
         add(binding.source);
       }

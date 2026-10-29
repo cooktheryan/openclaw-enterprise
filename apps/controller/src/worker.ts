@@ -1,3 +1,4 @@
+import { retainedAgentCredentialRevisions } from "@openclaw-enterprise/occ";
 import { reduceCredentialPolicy } from "@openclaw-enterprise/occ";
 import {
   assertExecutionReleaseAllowed,
@@ -3047,10 +3048,12 @@ export class ControllerWorker {
       }
     };
 
-    addSecrets(revision.secretBindings);
-    addHarnessAuth(revision.harnessAuth);
-    for (const { sourceId } of revision.credentialSources ?? []) {
-      add("credential_source", sourceId);
+    for (const retained of await retainedAgentCredentialRevisions(unit, agent)) {
+      addSecrets(retained.secretBindings);
+      addHarnessAuth(retained.harnessAuth);
+      for (const { sourceId } of retained.credentialSources ?? []) {
+        add("credential_source", sourceId);
+      }
     }
     addHarnessAuth(agent.harnessAuth);
     for (const { sourceId } of agent.credentialSources ?? []) {
