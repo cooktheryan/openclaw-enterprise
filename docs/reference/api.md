@@ -2452,6 +2452,7 @@ Example response
 {
   "data": {
     "agents": {
+      "agentAuthor": false,
       "create": true
     },
     "delete": true,
@@ -5163,6 +5164,7 @@ Example response
 {
   "data": {
     "administer": true,
+    "agentAuthor": false,
     "agentSourcesOperate": true,
     "configurationRead": true,
     "configurationSecretsOperate": true,

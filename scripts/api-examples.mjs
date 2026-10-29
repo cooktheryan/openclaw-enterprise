@@ -416,6 +416,7 @@ export const responseExamples = {
   provisionAgentRuntimeCredentials: { transportConfigured: true },
   getAgentCallerPermissions: {
     administer: true,
+    agentAuthor: false,
     agentSourcesOperate: true,
     configurationRead: true,
     configurationSecretsOperate: true,
@@ -430,7 +431,7 @@ export const responseExamples = {
   },
   getNamespaceCallerPermissions: {
     delete: true,
-    agents: { create: true },
+    agents: { create: true, agentAuthor: false },
     installation: { administer: true },
     secrets: { create: true },
   },

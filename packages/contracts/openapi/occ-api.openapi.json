@@ -24886,6 +24886,7 @@
                     "value": {
                       "data": {
                         "administer": true,
+                        "agentAuthor": false,
                         "agentSourcesOperate": true,
                         "configurationRead": true,
                         "configurationSecretsOperate": true,
@@ -36219,7 +36220,7 @@
                     "summary": "Example response",
                     "value": {
                       "data": {
-                        "agents": { "create": true },
+                        "agents": { "agentAuthor": false, "create": true },
                         "delete": true,
                         "installation": { "administer": true },
                         "secrets": { "create": true }
