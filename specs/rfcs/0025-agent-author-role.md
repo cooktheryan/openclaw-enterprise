@@ -9,7 +9,7 @@ author: cooktheryan
 - **ID:** RFC-0025
 - **Created:** 2026-10-29
 - **Last updated:** 2026-10-29
-- **RFC PR:** Pending submission
+- **RFC PR:** [#4045](https://github.com/openclaw/openclaw-enterprise/pull/4045)
 - **Implementation plan:** [RFC-0025 implementation plan](../plans/0025-agent-author-role.md)
 - **Related:** [Authorization](../../docs/reference/authorization.md), [RFC-0006](0006-basic-rbac/index.md)
 
