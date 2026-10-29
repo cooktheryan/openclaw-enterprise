@@ -20,7 +20,7 @@ Current policy writes are owned by the selected IAM Driver and State transaction
 
 ## Credential grant ownership and recovery
 
-Generated grants use a stable ID derived from the Agent, resource kind, and source ID. Cleanup may remove a binding only when its Namespace, Agent ServicePrincipal, managed credential Role, and recognized generated ID all match. It also recognizes the earlier ID form without a resource kind. An equivalent administrator-created binding with another ID remains untouched. A fresh Agent Author decision is required to create grants; another authorized Agent or Configuration update may remove obsolete grants after Role revocation. Reconciliation runs in the same platform transaction as the mutation, or the selected IAM Driver must fail closed. Retrying a failed mutation must not create duplicate grants or remove grants needed by the active revision.
+Generated grants use a stable ID derived from the Agent, resource kind, and source ID. Cleanup may remove a binding only when its Namespace, Agent ServicePrincipal, managed credential Role, and recognized generated ID all match. It also recognizes the earlier ID form without a resource kind. An equivalent administrator-created binding with another ID remains untouched. A fresh Agent Author decision is required to create grants; another authorized Agent or Configuration update may remove obsolete grants after Role revocation. Reconciliation runs in the same platform transaction as the mutation, or the selected IAM Driver must fail closed. Retrying a failed mutation must not create duplicate grants or remove grants needed by the draft, active revision, or queued and claimed deployments. After work becomes terminal, the next mutation or activation reconciliation removes unused generated grants.
 
 ## Implementation
 
@@ -30,6 +30,8 @@ Generated grants use a stable ID derived from the Agent, resource kind, and sour
 4. After local proof passes, run the same create/configure/deploy/stop/log/delete scenario against the configured disposable `oce-demo` AWS host. Use it only as a Kubernetes validation environment; add no AWS IAM policy, product behavior, or application settings. Close demo resources, stop the instance after validation, and record exact proof limits.
 
 ## Verification
+
+This table preserves earlier checks. The [superseding qualification](#superseding-qualification) records corrected lifecycle proof and current verification limits.
 
 | Required outcome                                                                    | Real check and prerequisites                                                                                                                                        | Result or remaining proof                                                                                                                                                                                                                                             |
 | ----------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -59,9 +61,23 @@ The [before screenshot](https://gist.githubusercontent.com/cooktheryan/528f418e2
 
 The [redacted Agent Author assertion report](https://gist.githubusercontent.com/cooktheryan/528f418e2f657a48a09af000c4abbd23/raw/a72c125a052cd89b78734850ef038de6f18445ba/agent-author-assertions.redacted.json) and [QA matrix stage report](https://gist.githubusercontent.com/cooktheryan/528f418e2f657a48a09af000c4abbd23/raw/d7a7edab9023f2d06758c90914d1868e095534f4/agent-author-matrix.redacted.json) are redacted outputs from the same Kubernetes run. They show the denied-before-credential-lookup checks, cross-Namespace and Restriction denials, replacement activation and old-grant cleanup, revoked access denial, Agent deletion cleanup, and the successful model-turn stage. Both reports omit principal, Namespace, Agent, and revision IDs.
 
+## Superseding qualification
+
+The following evidence supersedes earlier artifacts for persisted Restrictions and assigned-user Stop/Delete. Historical results above remain tied to their recorded commits.
+
+At implementation commit `cd6683bb322a9cb87700c7e0e8574f8ac4b667e9`, all six recorded Kubernetes QA stages passed. The assigned human performed Stop, was denied Stop and Delete after revocation, and performed Delete after explicit reassignment. The corrected SQL transport confirmed Restriction insertion and removal through database return values. The [updated assertions](https://gist.githubusercontent.com/cooktheryan/528f418e2f657a48a09af000c4abbd23/raw/f392afd0b7aafa60bac4966f0ecd4ffc8e958094/agent-author-updated-assertions.redacted.json) and [stage report](https://gist.githubusercontent.com/cooktheryan/528f418e2f657a48a09af000c4abbd23/raw/bf34468880952699233640ad62e8ee945d749e56/agent-author-updated-matrix.redacted.json) record model execution, credential replacement, activation cleanup, denial cases, and assigned-user lifecycle outcomes. [PR #4059](https://github.com/openclaw/openclaw-enterprise/pull/4059) embeds the refreshed screenshots and Console recording. The recording shows credential selection; authenticated HTTP requests establish the backend lifecycle outcomes.
+
+The PostgreSQL namespace IAM suite passed 19/19 without skips. Its extended regression failed on pre-fix code at the missing-grant assertion. Repaired code retained the grant while work was queued and claimed, then removed the obsolete generated grant during reconciliation after completion while preserving an administrator-created binding. See the [regression record](https://gist.githubusercontent.com/cooktheryan/528f418e2f657a48a09af000c4abbd23/raw/a0412fd2f2e5b1d94d0e5bda0eb78ed2cd6feaab/pending-deployment-regression.md) and [shell output](https://gist.githubusercontent.com/cooktheryan/528f418e2f657a48a09af000c4abbd23/raw/0f8c15120695b6b0c189419587e5975f8d722a59/pending-deployment-regression.txt). IAM, Console API, and QA-fixture checks passed 137/137 without skips.
+
+Full Compose qualification remains blocked before the scenario by installation startup `EACCES` on `chown /routing/gateway-api-key`. An initial concurrent Kubernetes attempt failed at browser login with `ERR_NETWORK_CHANGED`; the sequential run above passed. The [redacted attempts](https://gist.githubusercontent.com/cooktheryan/528f418e2f657a48a09af000c4abbd23/raw/64299aa221cbd90578d12c075132963ae0cb3b7f/runtime-attempts.redacted.json) retain these limits. Run-owned clusters and databases were removed, and the validation host was stopped.
+
+Follow-up head `d19e91ad66feba063033275849eab120a2e8de55` merges main, resolves Console access-status integration, moves retention orchestration behind the existing read-view port, and restores generated API request tables. Module-policy checks passed 2/2 and Create Agent browser checks passed 18/18; lint, typecheck, formatting, OpenAPI and workspace checks passed. Runtime execution was not repeated for this merge. Current-head CI and maintainer acceptance of the RFC remain open; neither the proposal nor implementation is marked complete.
+
 ## Manual Notes
 
 ## Changelog
+
+- 2026-10-29: Require retention for unfinished deployments and assigned-human lifecycle proof; record superseding qualification at `cd6683bb3` and merge checks at `d19e91ad6`.
 
 - 2026-10-29: Create the implementation plan from current IAM and Agent lifecycle contracts (ddbec473f0d0f906c71677ea8c95b63f8d59de86).
 - 2026-10-29: Record implementation and AWS verification evidence at `5825fa4c068a575317dfc319128931b378bdbf75`; retain the real Kubernetes workflow and documentation checks as open proof.
