@@ -369,8 +369,9 @@ export async function createQaBrowser(f, { themed, artifactsDirectory }) {
         await authorPage.screenshot({
           path: join(artifactsDirectory, `${mediaPrefix}-before.png`),
         });
-        const defaultPreset = authorPage.getByRole("button", {
-          name: "Start with default Preset",
+        const presetTemplate = authorPage.getByLabel("Preset template", { exact: true });
+        const usePreset = authorPage.getByRole("button", {
+          name: "Use Preset",
           exact: true,
         });
         const modelSecret = authorPage.getByLabel(
@@ -393,9 +394,22 @@ export async function createQaBrowser(f, { themed, artifactsDirectory }) {
               verify: () => createHeading.waitFor(),
             },
             {
-              target: defaultPreset,
-              action: () => defaultPreset.click(),
-              verify: () => modelSecret.waitFor({ state: "visible" }),
+              target: presetTemplate,
+              action: () => presetTemplate.selectOption(selected.id),
+              verify: async () => {
+                assert.equal(await usePreset.isEnabled(), true);
+              },
+            },
+            {
+              target: usePreset,
+              action: () => usePreset.click(),
+              verify: async () => {
+                await modelSecret.waitFor({ state: "visible" });
+                assert.equal(
+                  await authorPage.getByLabel("Harness", { exact: true }).inputValue(),
+                  codex ? "codex" : "openclaw",
+                );
+              },
             },
             {
               target: modelSecret,
