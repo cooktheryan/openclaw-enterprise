@@ -784,10 +784,17 @@ test(
 
     // A selected Driver that reports a noncanonical managed Role must not leave its
     // otherwise successful policy write behind when OCC rejects the Driver response.
+    const mismatchedDriverId = "postgres-agent-author-mismatched-role";
     const mismatchedDriver = new Proxy(iam, {
       get(target, property) {
         if (property === "id") {
-          return "postgres-agent-author-mismatched-role";
+          return mismatchedDriverId;
+        }
+        if (property === "authorize") {
+          return async (request) => ({
+            ...(await target.authorize(request)),
+            driverId: mismatchedDriverId,
+          });
         }
         if (property === "createNamespaceRole") {
           return async (context, input) => ({
@@ -820,10 +827,17 @@ test(
       "a rejected Driver response must roll back its Namespace Role write",
     );
 
+    const malformedPermissionDriverId = "postgres-agent-author-duplicate-permission";
     const malformedPermissionDriver = new Proxy(iam, {
       get(target, property) {
         if (property === "id") {
-          return "postgres-agent-author-duplicate-permission";
+          return malformedPermissionDriverId;
+        }
+        if (property === "authorize") {
+          return async (request) => ({
+            ...(await target.authorize(request)),
+            driverId: malformedPermissionDriverId,
+          });
         }
         if (property === "createNamespaceRole") {
           return async (context, input) => {
