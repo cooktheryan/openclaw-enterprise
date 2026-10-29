@@ -10,6 +10,7 @@ import { AuthorizationDeniedError, OpenClawController } from "../../packages/occ
 import { PostgresPlatformState } from "../../packages/occ/src/state/postgres-state.ts";
 import { databaseUrl, requiresPostgres } from "../helpers/postgres-database.mjs";
 import { createTestConfigurationDriver } from "../helpers/configuration-driver.mjs";
+import { createTestSecretDriver } from "../helpers/secret-driver.mjs";
 import { waitForLockWaiter } from "../helpers/postgres-lock-waits.mjs";
 
 function identifier(kind) {
@@ -930,6 +931,7 @@ test(
     const configurationDriver = createTestConfigurationDriver({
       id: "configuration-agent-author-revocation",
     });
+    const secretDriver = createTestSecretDriver({ id: secret.driverId });
     await configurationDriver.create({
       ...configuration,
       values: { model: "agent-author-revocation-test" },
@@ -955,6 +957,8 @@ test(
     controller.selectDriver("iam", iam.id);
     controller.registerDriver(configurationDriver);
     controller.selectDriver("configuration", configurationDriver.id);
+    controller.registerDriver(secretDriver);
+    controller.selectDriver("secret", secretDriver.id);
     const role = await controller.createIAMRole(administrator.subjectId, {
       namespaceId: namespace.id,
       preset: "agent-author",
