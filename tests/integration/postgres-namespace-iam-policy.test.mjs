@@ -763,13 +763,19 @@ test(
         )
         .map(({ id }) => id),
     );
-    const administratorBindings = persisted.bindings.filter(
-      (binding) => binding.subjectKind === "identity" && administratorRoleIds.has(binding.roleId),
-    );
-    assert.equal(
-      administratorBindings.length,
-      1,
-      "the fixture must have one explicitly provisioned Installation administrator",
+    const administratorBindings = persisted.bindings
+      .filter(
+        (binding) => binding.subjectKind === "identity" && administratorRoleIds.has(binding.roleId),
+      )
+      .filter((binding) =>
+        persisted.identities.some(
+          (identity) => identity.id === binding.subjectId && identity.kind === "principal",
+        ),
+      )
+      .sort((left, right) => left.subjectId.localeCompare(right.subjectId));
+    assert.ok(
+      administratorBindings.length > 0,
+      "the fixture must include an explicitly provisioned human Installation administrator",
     );
     const [administrator] = administratorBindings;
     const controller = new OpenClawController(installation, { state, recordOperations: false });
@@ -812,6 +818,44 @@ test(
       ),
       undefined,
       "a rejected Driver response must roll back its Namespace Role write",
+    );
+
+    const malformedPermissionDriver = new Proxy(iam, {
+      get(target, property) {
+        if (property === "id") {
+          return "postgres-agent-author-duplicate-permission";
+        }
+        if (property === "createNamespaceRole") {
+          return async (context, input) => {
+            const role = await target.createNamespaceRole(context, input);
+            const permissions = [...role.permissions];
+            permissions[0] = permissions[1];
+            return { ...role, permissions };
+          };
+        }
+        const value = Reflect.get(target, property, target);
+        return typeof value === "function" ? value.bind(target) : value;
+      },
+    });
+    controller.registerDriver(malformedPermissionDriver);
+    controller.selectDriver("iam", malformedPermissionDriver.id);
+    await assert.rejects(
+      controller.createIAMRole(administrator.subjectId, {
+        namespaceId: namespace.id,
+        preset: "agent-author",
+      }),
+      /different Agent Author Role/,
+    );
+    assert.equal(
+      await state.read((unit) =>
+        iam.getNamespaceRole(
+          { policy: unit.iamPolicy },
+          namespace.id,
+          `role_${namespace.id}_agent_author`,
+        ),
+      ),
+      undefined,
+      "a malformed Agent Author permission set must not survive the failed transaction",
     );
     controller.selectDriver("iam", iam.id);
 

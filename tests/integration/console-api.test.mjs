@@ -201,6 +201,15 @@ test("the managed Agent Author Role grants one human Namespace access and exact 
     namespaces.data.map(({ id }) => id),
     [namespace.id],
   );
+  const permissionSummary = await fixture.request(
+    "GET",
+    `/namespaces/${namespace.id}/permissions`,
+    {
+      session,
+    },
+  );
+  assert.equal(permissionSummary.status, 200);
+  assert.equal(permissionSummary.data.agents.agentAuthor, true);
   assertApiError(await fixture.request("GET", "/installation", { session }), 403, "FORBIDDEN");
   assertApiError(await fixture.request("GET", `${iam}/roles`, { session }), 403, "FORBIDDEN");
   assertApiError(

@@ -1900,17 +1900,17 @@ function agentAuthorRoleId(namespaceId: string): string {
 }
 
 function hasAgentAuthorPermissions(role: Readonly<Role>, namespaceId: string): boolean {
+  const expectedPermissions = AGENT_AUTHOR_ROLE_PERMISSIONS.map(
+    ({ action, resourceKind }) => `${action}\u0000${resourceKind}`,
+  ).sort();
+  const actualPermissions = role.permissions
+    .map(({ action, resourceKind }) => `${action}\u0000${resourceKind}`)
+    .sort();
   return (
     role.id === agentAuthorRoleId(namespaceId) &&
     role.namespaceId === namespaceId &&
     role.name === AGENT_AUTHOR_ROLE_NAME &&
-    role.permissions.length === AGENT_AUTHOR_ROLE_PERMISSIONS.length &&
-    AGENT_AUTHOR_ROLE_PERMISSIONS.every((expected) =>
-      role.permissions.some(
-        (actual) =>
-          actual.action === expected.action && actual.resourceKind === expected.resourceKind,
-      ),
-    )
+    isDeepStrictEqual(actualPermissions, expectedPermissions)
   );
 }
 
