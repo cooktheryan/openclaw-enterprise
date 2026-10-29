@@ -1093,9 +1093,18 @@ test(
                 value: `synthetic-${randomUUID()}`,
               });
               assert.equal(secret.status, 201);
-              const configurationPath = `/namespaces/${namespaceId}/configurations/${defaultConfiguration.data.id}`;
-              const current = await request("GET", configurationPath);
-              assert.equal(current.status, 200);
+              const configurationsPath = `/namespaces/${namespaceId}/configurations`;
+              const configuration = await request("POST", configurationsPath, {
+                kind: "agent",
+                values: { model: "agent-author-session-test" },
+              });
+              assert.equal(configuration.status, 201);
+              const authorAgent = await request("POST", agentsPath, {
+                name: `author-session-${randomUUID()}`,
+                configurationId: configuration.data.id,
+              });
+              assert.equal(authorAgent.status, 201);
+              const configurationPath = `${configurationsPath}/${configuration.data.id}`;
 
               const replica = await composeProduction({
                 mode: "production",
@@ -1131,8 +1140,8 @@ test(
                     "content-type": "application/json",
                   }),
                   body: JSON.stringify({
-                    values: current.data.values,
-                    expectedGeneration: current.data.generation,
+                    values: configuration.data.values,
+                    expectedGeneration: configuration.data.generation,
                     secretBindings: {
                       EXTERNAL_API_TOKEN: {
                         source: secret.data.ref,
@@ -1175,11 +1184,11 @@ test(
                      AND binding.identity_subject_id=$2
                      AND binding.resource_kind='secret'
                      AND binding.resource_id=$3`,
-                  [namespaceId, defaultAgent.data.servicePrincipalId, secret.data.id],
+                  [namespaceId, authorAgent.data.servicePrincipalId, secret.data.id],
                 );
                 assert.deepEqual(grant.rows, [
                   {
-                    id: `binding_${defaultAgent.data.id}_secret_${secret.data.id}_operate`,
+                    id: `binding_${authorAgent.data.id}_secret_${secret.data.id}_operate`,
                     role_id: `role_${namespaceId}_agent_secret_operate`,
                   },
                 ]);
