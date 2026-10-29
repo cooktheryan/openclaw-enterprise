@@ -1630,7 +1630,14 @@ describe("Agent channels", { concurrency: 3 }, () => {
         { exact: true },
       )
       .waitFor();
-    assert.equal(await drawer.getByText(/or create/).count(), 0);
+    assert.equal(
+      await drawer
+        .getByText("Choose existing Slack token Secrets or create them here.", {
+          exact: true,
+        })
+        .count(),
+      0,
+    );
     await drawer.getByLabel("Slack app token", { exact: true }).fill("Create a new Secret");
     const action = drawer.getByRole("option", {
       name: `Create new Secret... ${SECRET_CREATE_DENIED}`,

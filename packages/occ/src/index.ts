@@ -1852,10 +1852,10 @@ const SANDBOX_DRIVER_WITHOUT_NETWORK_POLICY =
   "The selected Sandbox Driver does not support per-Agent network policy.";
 
 /**
- * Why the Namespace policy API refuses `create` Permissions. `create` is authorized against
- * the Namespace collection, never an existing resource, and this API binds only exact
- * resources, so such a Permission could never take effect through it. Role creation and
- * binding creation share the reason so their refusals stay consistent.
+ * Why the Namespace policy API refuses arbitrary `create` Permissions. `create` targets the
+ * Namespace collection; only the managed Agent Author Role uses a Namespace binding. Custom
+ * Roles remain on the exact-resource contract. Role creation and binding creation share this
+ * reason so their refusals stay consistent.
  */
 const NAMESPACE_POLICY_CREATE_REASON =
   "Create is checked on the Namespace; only the managed Agent Author Role uses a Namespace binding";

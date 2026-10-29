@@ -500,7 +500,10 @@ test("direct controller creates and renames apply the API Name rule", async () =
       ],
     }),
   );
-  const namespaceId = "ns_00000000-0000-4000-8000-000000000999";
+  const namespace = await controller.createNamespace("principal-admin", {
+    name: "Name validation",
+  });
+  const namespaceId = namespace.id;
   for (const name of namesOutsideTheNameRule) {
     const label = JSON.stringify(name);
     await assert.rejects(

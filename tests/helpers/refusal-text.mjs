@@ -19,10 +19,13 @@ export const agentPrincipalDenied = (agent, target, grant = "Secret operate") =>
 // A denial echoes the ID its request sent, so a real and an unknown ID get answers that match once
 // each answer's own ID is hidden: the text never says whether the resource exists.
 export const sentIdHidden = (text, id) => text.replaceAll(id, "<id>");
-// A create needs the collection grant. The managed Agent Author Role grants supported
-// Namespace-wide creates; an Installation administrator assigns it. `kinds` is plural.
+// An Agent Author can create Agents, Configurations, Secrets, and credential sources. Other
+// creates remain Installation-administrator owned. `kinds` is plural.
+const agentAuthorCreateKinds = new Set(["Agent", "Configuration", "Secret", "CredentialSource"]);
 export const createDenied = (kind, namespaceId, kinds = `${kind}s`) =>
-  `Not authorized: this needs ${kind} create in Namespace ${namespaceId}. Ask an Installation administrator to assign you the Agent Author Role in this Namespace or create ${kinds}.`;
+  agentAuthorCreateKinds.has(kind)
+    ? `Not authorized: this needs ${kind} create in Namespace ${namespaceId}. Ask an Installation administrator to assign you the Agent Author Role in this Namespace or create ${kinds}.`
+    : `Not authorized: this needs ${kind} create in Namespace ${namespaceId}. Only an Installation administrator can create ${kinds}: ask one to create it.`;
 // The same create refused by a Restriction to a caller who administers the Installation, as the
 // console's AGENT_CREATE_RESTRICTED says (finding D769). Other callers get createDenied.
 export const createRestricted = (kind, namespaceId) =>

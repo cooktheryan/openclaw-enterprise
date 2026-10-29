@@ -58,34 +58,20 @@ graph TD
 
 `apps/controller/src/console/agents/detail.mts:renderAgentDetail`
 
-The page reads Agent, readable versions, and current Configuration
-(`revision=draft`) or Agent revision (`revision=<id>`).
-`packages/occ/src/index.ts` uses `listAgents`, `listRevisions`,
-`getAgentForBrowsing`, and `getRevisionForBrowsing` for browsing.
-`packages/occ/src/state/postgres-state.ts:browseSavedConfiguration` turns
-payload-decode failures into metadata plus `configurationReadError`; queries
-and operational reads remain strict. Unreadable drafts refuse editing and deployment without defaults.
-**Selected for service** uses `activeRevisionId`; **Viewing version** selects a draft
-or read-only version without activation. **Load older versions** appends pages,
-retains selection, and focuses the picker after the last page. The picker marks
-failures from `deploymentStatus` and `deploymentErrorCode` across reloads, excluding
-superseded/stopped outcomes.
+The page reads the Agent, readable versions, and the current Configuration for
+`revision=draft` or Agent revision for `revision=<id>`. OCC uses `listAgents`,
+`listRevisions`, `getAgentForBrowsing`, and `getRevisionForBrowsing`. A bad saved
+Configuration payload returns metadata and `configurationReadError`; editing
+and deployment fail closed. **Selected for service** uses `activeRevisionId`;
+viewing a draft or saved version does not activate it. **Load older versions**
+appends pages and retains selection. The picker marks stored deployment failures.
 
-**Deployment** mounts activity, the selected record, and diagnostics
-(`agents/deployment-evidence.mts`); polling continues across tabs.
-`detail.mts:renderTab` offers **Retry** for transient snapshot errors.
-Completion and reads after `FIRST_ACTIVITY_WAIT_MS` fold unless cleanup, warnings,
-or overview errors need attention. Overview errors preserve outcomes.
-
-`createDeploymentStatusPanel` polls until completion/refusal. Transient errors retain
-progress; `invalidate`/`fail` clear caches and reads. `onFreshRecord` shares matching
-GETs; `show` never republishes. Refusals override successes; any `401` expires the session.
-`terminalOverview` tracks reconciliation without denied records. Unreconciled terminal
-data reads Agent/revisions once; matching reads share work. Failures require explicit retry.
-`readingOverview` protects explicit reads; `recordGeneration` rejects stale payloads.
-Fresh evidence renders while Refresh stays busy.
-**Refresh deployment** queues one full reread; **Refresh record** preserves focus
-and ignores repeats. Refusals open details; matching errors share an alert.
+**Deployment** polls activity, the selected record, and diagnostics across tabs.
+Transient read errors keep progress; denied reads clear cached evidence and `401`
+expires the session. Refusals override successes, and stale responses are ignored.
+**Retry** repeats failed reads. **Refresh deployment** rereads all status;
+**Refresh record** keeps selection and focus. An unreconciled terminal result
+requires a fresh read before recovery.
 
 `agents/deployment-recovery.mts` places failure recovery above the summary;
 `deployment-failure-steps.ts` classifies `deploy-again`, `logs` or `change`.
@@ -128,16 +114,12 @@ bound Secret does too, unless, for channels, each such Secret has a Slack token 
 editable, the draft says so and, without deploy, has no checklist.
 
 `agents/plugin-fields.mts:createPluginFields` renders **Plugins**.
-`agents/plugins.mts:savePlugins` rereads the Agent before PATCH. If the Agent,
-Namespace, Configuration, selections, or approvers differ from the editor's
-baseline, it sends no write. This read does not lock the Agent. The editor clears
-the draft only when the response confirms that identity and the submitted settings.
-The page then rebuilds from that response, which also carries a Stop or
-deployment made since the page loaded.
-**Reload plugin selections** discards the local draft and reads the Agent without
-repeating the PATCH. A successful read rebuilds the editor from saved settings.
-If the read fails, the Console opens the draft page again. The Plugin Driver
-validates the selections before deployment [snapshots the saved settings](../agent-plugins.md).
+`agents/plugins.mts:savePlugins` rereads the Agent before PATCH. If its identity,
+Configuration, selections, or approvers changed, the Console sends no write.
+It clears the draft only when the response confirms the submitted settings.
+**Reload plugin selections** discards the local draft and rereads without another
+PATCH. The Plugin Driver validates and snapshots saved selections at deployment
+([Agent plugin flow](../agent-plugins.md)).
 
 **Repositories** uses `createRepositoryFields` with exact-Agent discovery and
 PATCHes `repositoryAccess`. Unsaved edits also block tabs; failed discovery leaves
@@ -151,13 +133,10 @@ send no bodyless deploy POST; success opens the version. Uncertain POSTs require
 history readback before retry; browser reads are not atomic with admission.
 
 `apps/controller/src/console/drafts.mts:createDraftStore` holds document-local drafts.
-`console.mjs:resetReads` and `detail.mjs:renderTab` capture fields before teardown,
-excluding passwords. Namespace and Agent keys isolate drafts; session expiry,
-user change, logout, exit, and reload clear them. Nothing enters browser storage
-or URLs. Configuration, authentication, and channel baselines prevent stale saves;
-channel snapshots include controls and staged Secret metadata. Reload draft reapplies
-only the reader's edits, naming overlaps and skipped choices. Save and Cancel
-clear captures; pending saves retain recovery guards.
+Namespace and Agent keys isolate them; session expiry, user change, logout, exit,
+and reload clear them. Drafts exclude passwords and never enter browser storage
+or URLs. Baselines prevent stale saves; reload reapplies only non-overlapping edits.
+Save and Cancel clear captures, while pending saves retain recovery guards.
 
 `dom.mts:dismissOnBackdrop` requires press and click outside the topmost editor.
 Like Escape, cancellation discards channel drafts, clears Secret inputs, and
@@ -168,20 +147,14 @@ only **Open draft** permits editing. The
 [console reference](../../reference/console/versions-and-channel-drafts.md)
 owns Slack requirements and rejected native shapes; Teams remains native JSON.
 
-`agents/detail.mts:renderConfigurationTab` reads draft Harness authentication
-from the Agent, or admitted authentication and channel `secretBindings` from the
-version. `agents/secret-picker.mjs:renderSecretReference` checks the source
-Namespace and reads exact Secret metadata. On Agent detail, unless the session
-is an Installation administrator, it first reads the readable Namespace's Secret
-list once per view: the list audits nothing it leaves out, while each refused
-exact read is an audited denial. A Secret it leaves out shows as unavailable
-without the exact read (finding 2619). Successful reads link names to
-`/console/secrets?secret=<id>`, which opens that Secret's metadata and consumers;
-Secret fields link only a Secret their list includes and give an unlisted one
-the same unavailable sentence (finding D757). Successful reads show names and IDs;
-absent, loading, and unavailable states remain distinct. Failures retain IDs;
-stale responses are ignored and current 401s expire the session. Summaries need
-neither collection permission nor Secret values.
+`detail.mts:renderConfigurationTab` reads draft Harness authentication from the
+Agent and admitted authentication and channel `secretBindings` from the version.
+`agents/secret-picker.mjs` checks the source Namespace and exact Secret metadata.
+For non-admin sessions, Agent detail first lists readable Namespace Secrets; it
+does not issue exact reads for omitted Secrets. Refused exact reads remain audited.
+The picker shows metadata only, distinguishes absent, loading, and unavailable
+states, ignores stale responses, and expires current `401` sessions. It never
+reads Secret values. Secret links open the metadata and consumers view.
 
 `apps/controller/src/console/channels/slack.mjs:appendFields` separates channel
 senders from DMs. Wildcard, empty, or omitted channel `users` selects **Allow
@@ -197,36 +170,21 @@ and native `dm.enabled` remain unchanged. Configuration save persists the
 selection; redeployment applies it. See
 [Slack policies](../../reference/configuration/secrets.md#native-channel-configuration).
 
-`apps/controller/src/console/agents/detail.mts:renderAgentDetail` supplies Namespace,
-bindings and Credentials URL to `channels/slack.mjs:credentialReferenceField`.
-`GET /namespaces/:namespaceId/secrets` requires Namespace read;
-`packages/occ/src/index.ts:listSecrets` filters exact Secret read without the Secret Driver.
-`agents/secret-picker.mjs:createSecretReferenceField` filters names/IDs. Arrows navigate,
-Enter selects, Escape restores, Cancel discards; typing stages nothing, selection stages references.
-**Refresh Secret list** preserves query, focus, staged fields and highlighted IDs across reordering;
-vanished highlights require new intent. It retries metadata, never saves; pending reads disable refresh.
-When a selection waits for permission, a refused list clears readable metadata and prevents that
-selection from staging. The completed refresh clears its loading hint without replacing newer feedback.
-False Namespace `secrets.create` disables creation with reasons and existing-only drawer/Preset hints.
-**Save configuration** requires changed fields/bindings.
-`GET .../agents/:agentId/permissions/secrets` lists readable but inoperable Secrets, disabled with
-reasons, never staged. Refused binding saves reread it; inline creation rereads before staging.
-Any listed denial means per-Secret operate: new Secrets have none, disabling picker/Preset
-creation with reasons and existing-only hints. Failed rereads keep prior answers.
+`renderAgentDetail` supplies Namespace and bindings to the channel credential picker.
+`GET /namespaces/:namespaceId/secrets` requires Namespace read and filters exact
+Secret reads. The picker stages references only after selection; refresh rereads
+metadata without saving. A refused permission check clears readable metadata and
+blocks staging. Secret creation and binding choices are disabled when their
+Namespace or per-Secret grants are insufficient. Save requires changed fields or
+bindings and rereads permission answers after a refusal.
 
-`apps/controller/src/console/agents/secret-picker.mjs:openCreateSecretDialog` shows
-an editable Agent-prefixed Name, the Secrets page's `secretValueControl` (CRLF becomes LF),
-and optional fixed Slack key. Both meet the API's rules before POST, which stores the Secret
-and stages returned metadata; cancellation never deletes it. Conflicts retain inputs.
-Readiness errors differ from name/backend conflicts. Success, cancellation, and uncertain outcomes clear values;
-uncertain outcomes block retries until refresh. The
-[Secret storage flow](../secret-storage-and-delivery.md) owns persistence and
-recovery. Metadata and Credentials links open new tabs, preserving edits.
-Values are never retrieved.
+`openCreateSecretDialog` validates the Agent-prefixed name, value, and optional
+Slack key before POST. Success stores the Secret and stages returned metadata;
+cancellation does not delete it. Uncertain outcomes clear values and block retry
+until refresh. See the [Secret storage flow](../secret-storage-and-delivery.md).
 
 Channel saves reread the Agent and Configuration. A changed Configuration, service principal,
-or generation requires **Reload draft** before a write or Secret grant. A provisioning
-reservation explains the refusal. PATCH sends
+or generation requires **Reload draft** before a write or Secret grant. PATCH sends
 `{ values, expectedGeneration }`, plus every binding after a Secret change; a save keeping a Secret
 the caller cannot `operate` is refused before the PATCH, so **Disable** is offered disabled.
 A save that rebinds such a Secret rereads the permission answer; Plugins, Repositories and the
@@ -252,10 +210,9 @@ administrator-created bindings. The selected IAM Driver must support transaction
 otherwise OCC refuses the change. Audit records each grant and removal.
 
 `agents/credentials.mjs:missingChannelCredentialGroups` reads token keys as the Slack Channel
-Driver does; pickers appear only for standard keys. A 400 that
-`agents/list.mjs:channelBindingRefusal` matches shows the API's message. An uncertain PATCH
-blocks another channel write until Refresh. Disabling a draft channel changes Configuration
-but does not stop a running Agent.
+Driver does; pickers appear only for standard keys. A matching 400 shows the API
+message. An uncertain PATCH blocks another channel write until Refresh. Disabling
+a draft channel changes Configuration but does not stop a running Agent.
 
 <span id="5-provision-initial-runtime-credentials"></span>
 
@@ -333,7 +290,7 @@ Moved to [Agent stop and deletion](agent-stop-and-deletion.md#8-confirm-deletion
   exact Secret `read`.
 - After a partial save, inspect Configuration, Secret metadata, and Agent IAM
   bindings before retrying; storage and binding do not prove runtime delivery.
-- Run `OCC_PRODUCTION_WIREUP_DATABASE_URL=<disposable PostgreSQL URL> node --test tests/integration/postgres-production-wireup.test.mjs` to exercise a cross-replica logout while an Agent Author Configuration update waits on its Namespace lock. The test checks the saved Configuration and generated Agent credential grant after logout completes.
+- The [PostgreSQL integration](../../testing/postgresql.md) verifies that cross-replica logout waits for an Agent Author Configuration update and its credential grant to commit.
 - After a plugin edit, compare saved `Agent.plugins` with the version's plugin
   snapshot; an Agent update installs or activates no plugin until a deployment.
 - [Console failures](../../reference/console.md#failures-and-logout) covers session,

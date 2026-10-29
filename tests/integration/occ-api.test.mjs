@@ -1163,7 +1163,7 @@ test("Namespace IAM refuses bindings whose Role cannot apply to the target", asy
     assert.deepEqual(rejected.body.error.details, [{ path: "/roleId", code: "INVALID_VALUE" }]);
     assert.match(
       rejected.body.error.message,
-      /^Role role_\S+ has Permissions this API cannot bind: agent:create, configuration:create, secret:create\. Create is checked on the Namespace, and this API binds only exact resources; bind a Role without them\.$/,
+      /^Role role_\S+ has Permissions this API cannot bind: agent:create, configuration:create and 1 more\. Create is checked on the Namespace; only the managed Agent Author Role uses a Namespace binding; bind a Role without them\.$/,
     );
   }
 
@@ -1987,9 +1987,8 @@ test("Namespace IAM reports invalid policy input as 400 with the field and refus
   assert.deepEqual(lifecycle.body.error.details, [
     { path: "/permissions/0/action", code: "INVALID_VALUE" },
   ]);
-  // create is checked on the Namespace collection and this API binds only exact resources,
-  // so every binding of such a Role would be refused; Role creation refuses it first and
-  // points at the first create Permission.
+  // create is checked on the Namespace collection. Only the managed Agent Author Role uses a
+  // Namespace binding; arbitrary Namespace Roles keep the exact-resource contract.
   const createKinds = [
     "agent",
     "configuration",
@@ -2016,7 +2015,7 @@ test("Namespace IAM reports invalid policy input as 400 with the field and refus
       ]);
       assert.equal(
         rejected.body.error.message,
-        `Namespace IAM Roles cannot grant create Permissions: ${resourceKind}:create. Create is checked on the Namespace, and this API binds only exact resources; omit them from the Role.`,
+        `Namespace IAM Roles cannot grant create Permissions: ${resourceKind}:create. Create is checked on the Namespace; only the managed Agent Author Role uses a Namespace binding; omit them from the Role.`,
       );
     }
   }
