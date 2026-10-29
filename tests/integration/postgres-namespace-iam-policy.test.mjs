@@ -928,7 +928,7 @@ test(
     const { installation, namespace, secret, configuration, agent } =
       await createNamespaceAgentState(state);
     const configurationDriver = createTestConfigurationDriver({
-      id: installation.drivers.configuration.id,
+      id: "configuration-agent-author-revocation",
     });
     await configurationDriver.create({
       ...configuration,
