@@ -4,6 +4,7 @@ const scenarioPresets = {
   "sandbox-policy": ["Codex"],
   "model-ui": ["OpenClaw", "Codex"],
   "console-secrets": ["OpenClaw", "Codex"],
+  "agent-author": ["Codex"],
   calendar: ["Codex"],
   "git-write": ["OpenClaw", "Codex"],
   "git-push-denied": ["Codex"],
@@ -103,7 +104,9 @@ export function selectQaMatrix(env = process.env) {
     scenarios,
     requiredEnv,
     repository,
-    browser: activeScenarios.some((name) => ["model-ui", "console-secrets"].includes(name)),
+    browser: activeScenarios.some((name) =>
+      ["model-ui", "console-secrets", "agent-author"].includes(name),
+    ),
     scope:
       installation === "all" && preset === "all" && scenarios.length === allScenarios.length - 1
         ? "full"

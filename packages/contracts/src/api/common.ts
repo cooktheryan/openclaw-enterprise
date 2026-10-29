@@ -590,26 +590,39 @@ export const IAMPermissionBody = Type.Object(
   { additionalProperties: false },
 );
 
-export const CreateIAMRoleBody = Type.Object(
-  {
-    name: Type.Optional(Name),
-    permissions: Type.Array(IAMPermissionBody, { minItems: 1, maxItems: 64 }),
-  },
-  { additionalProperties: false },
-);
+export const CreateIAMRoleBody = Type.Union([
+  Type.Object({ preset: Type.Literal("agent-author") }, { additionalProperties: false }),
+  Type.Object(
+    {
+      name: Type.Optional(Name),
+      permissions: Type.Array(IAMPermissionBody, { minItems: 1, maxItems: 64 }),
+    },
+    { additionalProperties: false },
+  ),
+]);
 
 export const CreateIAMServicePrincipalBody = Type.Object({}, { additionalProperties: false });
 
-export const CreateIAMAccessBindingBody = Type.Object(
-  {
-    subjectKind: Type.Literal("identity"),
-    subjectId: Type.String({ minLength: 1, maxLength: 200 }),
-    roleId: IAMRoleId,
-    resourceKind: NamespacePolicyResourceKindSchema,
-    resourceId: Type.String({ minLength: 1, maxLength: 200 }),
-  },
-  { additionalProperties: false },
-);
+const IAMAccessBindingSubjectBody = {
+  subjectKind: Type.Literal("identity"),
+  subjectId: Type.String({ minLength: 1, maxLength: 200 }),
+  roleId: IAMRoleId,
+};
+
+export const CreateIAMAccessBindingBody = Type.Union([
+  Type.Object(
+    {
+      ...IAMAccessBindingSubjectBody,
+      resourceKind: NamespacePolicyResourceKindSchema,
+      resourceId: Type.String({ minLength: 1, maxLength: 200 }),
+    },
+    { additionalProperties: false },
+  ),
+  Type.Object(
+    { ...IAMAccessBindingSubjectBody, scope: Type.Literal("namespace") },
+    { additionalProperties: false },
+  ),
+]);
 
 export const CreateConfigurationBody = Type.Object(
   {

@@ -1,7 +1,7 @@
 ---
 created: 2026-10-20
-updated: 2026-10-25
-last_updated_session: fix-2469
+updated: 2026-10-29
+last_updated_session: authoring-run/32233c9b-0a2e-4472-ae28-676de3a66fcd
 ---
 
 # Console Agent creation
@@ -10,7 +10,8 @@ last_updated_session: fix-2469
 
 Trace the Create Agent form from plugin, model, and repository choices to a
 provisioning request or an ordinary draft, then Secret grants and authentication.
-The [parent flow](../platform-console.md) authorizes the page first; the
+An Agent Author assigned in this Namespace uses this same Console without
+Installation administration. The [parent flow](../platform-console.md) authorizes the page first; the
 [creation reference](../../reference/console/create-and-deploy.md) owns
 user-visible behavior.
 
@@ -20,7 +21,7 @@ user-visible behavior.
   form (`renderAgentForm`) and submits it.
 - `apps/controller/src/console/agents/plugin-fields.mjs:createPluginFields` and
   `agents/repositories.mts:createRepositoryFields` supply the plugin and repository fields.
-- A signed-in caller with Namespace Agent `create`; each write is authorized again.
+- A signed-in caller with Namespace Agent `create`; an Agent Author receives this grant through the managed Role. Each write is authorized again.
 
 ## Flow
 
@@ -144,6 +145,12 @@ failed permission read offers **Retry permission check**, which rereads only tha
 and lock JSON/Harness for explicit reuse. Writes never retry automatically; drafts
 save no version and start no runtime.
 
+The Namespace permission answer marks the managed Agent Author Role. For that Role,
+the form says OCC grants the Agent only the credential resources it binds. The
+Agent create or update transaction creates those exact ServicePrincipal bindings;
+the Console does not read or write IAM policy. The Role grants Agent create and
+management across the Namespace, so it also covers Agents created by other people.
+
 `agents/harness-auth.mjs` edits bindings and shows
 [Secret identities](agent-editing.md#4-render-draft-revision-or-channels),
 never values. Authentication source uses the shared form-field presentation;
@@ -169,6 +176,7 @@ Switching methods hides that feedback without changing the lookup or saved choic
 
 ## Changelog
 
+- 2026-10-29 10:06: Describe scoped Console access and transactional credential grants for Agent Authors. (authoring-run/32233c9b-0a2e-4472-ae28-676de3a66fcd - 3b9f76e11c3a7ffb5997de61c1e448370c521a92)
 - 2026-10-25: The per-Secret `operate` remedy names an exact-Secret grant; the Agents list gives Create Agent's next step when Agent create is denied. (findings 2507, 2508)
 - 2026-10-25: Refuse a typed model key, and disable the Preset's **Create new Secret**, where `operate` is denied on a readable Secret. (fix-2492, finding 2492)
 - 2026-10-25: An inline Secret create rereads the `operate` answer before staging. (finding 2486)

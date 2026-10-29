@@ -1669,7 +1669,11 @@ export function createFastifyApp(options: ControllerAppOptions): FastifyInstance
     ) {
       throw dependencyUnavailable();
     }
-    return { allowed: decision.allowed, restricted: decision.evidence.restrictionIds.length > 0 };
+    return {
+      allowed: decision.allowed,
+      restricted: decision.evidence.restrictionIds.length > 0,
+      roleIds: decision.evidence.roleIds,
+    };
   }
 
   async function callerMay(
@@ -2253,18 +2257,28 @@ export function createFastifyApp(options: ControllerAppOptions): FastifyInstance
       // Targets match Namespace deletion, operationTarget() for creation, and
       // requireInstallationAdmin. The console reads this answer
       // instead of an Installation-only read, which the API audits when it is refused.
-      const [namespaceDelete, agentCreate, secretCreate, installationAdminister] =
+      const [namespaceDelete, agentCreateDecision, secretCreate, installationAdminister] =
         await Promise.all([
           callerMay(context.actorId, "delete", { kind: "namespace", id: namespaceId, namespaceId }),
-          ...(["agent", "secret"] as const).map((kind) =>
-            callerMay(context.actorId, "create", { kind, id: namespaceId, namespaceId }),
-          ),
+          callerDecision(context.actorId, "create", {
+            kind: "agent",
+            id: namespaceId,
+            namespaceId,
+          }),
+          callerMay(context.actorId, "create", {
+            kind: "secret",
+            id: namespaceId,
+            namespaceId,
+          }),
           callerMay(context.actorId, "administer", { kind: "installation", id: installationId }),
         ]);
+      const agentCreate = agentCreateDecision.allowed;
+      const agentAuthor =
+        agentCreate && agentCreateDecision.roleIds.includes(`role_${namespaceId}_agent_author`);
       reply.send({
         data: {
           delete: namespaceDelete,
-          agents: { create: agentCreate },
+          agents: { create: agentCreate, agentAuthor },
           secrets: { create: secretCreate },
           installation: { administer: installationAdminister },
         },
@@ -2562,7 +2576,7 @@ export function createFastifyApp(options: ControllerAppOptions): FastifyInstance
       };
       const [
         [
-          update,
+          updateDecision,
           deploy,
           operate,
           remove,
@@ -2576,7 +2590,8 @@ export function createFastifyApp(options: ControllerAppOptions): FastifyInstance
         readLogsDecision,
       ] = await Promise.all([
         Promise.all([
-          ...(["update", "deploy", "operate", "delete", "administer"] as const).map((action) =>
+          callerDecision(context.actorId, "update", target),
+          ...(["deploy", "operate", "delete", "administer"] as const).map((action) =>
             callerMay(context.actorId, action, target),
           ),
           callerMay(context.actorId, "update", configuration),
@@ -2585,6 +2600,9 @@ export function createFastifyApp(options: ControllerAppOptions): FastifyInstance
         ]),
         callerDecision(context.actorId, "read_logs", target),
       ]);
+      const update = updateDecision.allowed;
+      const agentAuthor =
+        update && updateDecision.roleIds.includes(`role_${namespaceId}_agent_author`);
       // Log text authorizes Agent read_logs or, without a Restriction on read_logs, Agent
       // administer in its place, as the runtime log read decides it. The console skips that
       // audited read for a caller without either (finding D758).
@@ -2653,6 +2671,7 @@ export function createFastifyApp(options: ControllerAppOptions): FastifyInstance
       reply.send({
         data: {
           update,
+          agentAuthor,
           deploy,
           operate,
           delete: remove,

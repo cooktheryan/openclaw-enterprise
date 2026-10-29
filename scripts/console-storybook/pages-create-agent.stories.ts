@@ -12,6 +12,10 @@ export const FormNamespaceBecomesReady = story("createFormNamespaceBecomesReady"
 export const FormNamespaceFailed = story("createFormNamespaceFailed");
 export const FormNamespaceMissing = story("createFormNamespaceMissing");
 export const CreateForm = { ...story("createForm"), name: "OpenAI with Codex harness" };
+export const CreateAgentAuthor = {
+  ...story("createAgentAuthor"),
+  name: "Agent Author credential access",
+};
 export const CreateSecretCreateNotPermitted = {
   ...story("createSecretCreateNotPermitted"),
   name: "Secret creation not permitted",

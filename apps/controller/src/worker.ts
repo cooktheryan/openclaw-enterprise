@@ -3017,6 +3017,125 @@ export class ControllerWorker {
     });
   }
 
+  /** Remove generated credential grants after the replacement revision becomes active. */
+  private async removeStaleAgentCredentialGrants(
+    unit: PlatformUnitOfWork,
+    claim: ClaimedWork,
+    agent: Readonly<Agent>,
+    revision: Readonly<AgentRevision>,
+  ): Promise<void> {
+    const desired = new Set<string>();
+    const add = (kind: "secret" | "credential_source", id: string) => {
+      desired.add(`${kind}\u0000${id}`);
+    };
+    const addSecrets = (bindings: SecretBindings | undefined) => {
+      for (const { source } of Object.values(bindings ?? {})) {
+        add("secret", source.id);
+      }
+    };
+    const addHarnessAuth = (auth: Agent["harnessAuth"] | AgentRevision["harnessAuth"]) => {
+      if (auth === null) {
+        return;
+      }
+      if (
+        (auth.method === "api_key" || auth.method === "codex_pat") &&
+        auth.source.kind === "secret"
+      ) {
+        add("secret", auth.source.id);
+      } else if (auth.method === "credential_source") {
+        add("credential_source", auth.sourceId);
+      }
+    };
+
+    addSecrets(revision.secretBindings);
+    addHarnessAuth(revision.harnessAuth);
+    for (const { sourceId } of revision.credentialSources ?? []) {
+      add("credential_source", sourceId);
+    }
+    addHarnessAuth(agent.harnessAuth);
+    for (const { sourceId } of agent.credentialSources ?? []) {
+      add("credential_source", sourceId);
+    }
+    const configuration = await unit.configurations.findConfiguration(
+      agent.namespaceId,
+      agent.configurationId,
+    );
+    if (configuration === undefined) {
+      throw new Error(
+        "The Agent's current Configuration is unavailable during credential cleanup.",
+      );
+    }
+    addSecrets(configuration.secretBindings);
+
+    const bindings = await unit.iamPolicy.listAccessBindings(agent.namespaceId);
+    const stale = bindings.filter((binding) => {
+      const kind = binding.resourceKind;
+      const sourceId = binding.resourceId;
+      if (
+        binding.namespaceId !== agent.namespaceId ||
+        binding.subjectKind !== "identity" ||
+        binding.subjectId !== agent.servicePrincipalId ||
+        (kind !== "secret" && kind !== "credential_source") ||
+        !sourceId ||
+        binding.roleId !== `role_${agent.namespaceId}_agent_${kind}_operate`
+      ) {
+        return false;
+      }
+      const generatedIds = [
+        `binding_${agent.id}_${kind}_${sourceId}_operate`,
+        `binding_${agent.id}_${sourceId}_operate`,
+      ];
+      return generatedIds.includes(binding.id) && !desired.has(`${kind}\u0000${sourceId}`);
+    });
+    if (stale.length === 0) {
+      return;
+    }
+    const installationId = this.installation?.id;
+    if (installationId === undefined) {
+      throw new Error("The Installation is unavailable during credential grant cleanup.");
+    }
+    if (
+      this.iam.namespacePolicyTransaction !== "platform-unit-of-work" ||
+      typeof this.iam.deleteNamespaceAccessBinding !== "function"
+    ) {
+      throw new Error("The selected IAM Driver cannot remove stale Agent credential grants.");
+    }
+    for (const binding of stale) {
+      const removed = await this.iam.deleteNamespaceAccessBinding(
+        { policy: unit.iamPolicy },
+        agent.namespaceId,
+        binding.id,
+      );
+      if (!removed) {
+        throw new Error("The IAM Driver did not remove a stale Agent credential grant.");
+      }
+      await unit.audit.append({
+        id: `aud_${randomUUID()}`,
+        installationId,
+        namespaceId: agent.namespaceId,
+        occurredAt: new Date().toISOString(),
+        kind: "mutation",
+        actorId: claim.actorId,
+        source: "occ",
+        action: "openclaw.iam.agent_credential_grant_removed",
+        resource: {
+          kind: binding.resourceKind as "secret" | "credential_source",
+          id: binding.resourceId!,
+          namespaceId: agent.namespaceId,
+        },
+        iamDriverId: this.iamDriverId,
+        outcome: "success",
+        details: {
+          agentId: agent.id,
+          servicePrincipalId: agent.servicePrincipalId,
+          roleId: binding.roleId,
+          bindingId: binding.id,
+          activatedRevisionId: revision.id,
+        },
+      });
+    }
+  }
+
   private async appendAgentDeletionOutcome(
     unit: PlatformUnitOfWork,
     claim: ClaimedWork,
@@ -5911,6 +6030,7 @@ export class ControllerWorker {
           activeRevisionChanged = true;
           return;
         }
+        await this.removeStaleAgentCredentialGrants(unit, claim, activeAgent, resolved.revision);
         activated = resolved.revision;
         return;
       } else if (

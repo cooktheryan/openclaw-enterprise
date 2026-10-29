@@ -60,7 +60,7 @@ var commandPermissions = map[string]commandPermission{
 	"iam role delete":                     {[]string{"deleteIAMRole"}, []string{"installation.administer", "namespace.read"}, ""},
 	"iam access-binding list":             {[]string{"listIAMAccessBindings"}, []string{"installation.administer", "namespace.read"}, ""},
 	"iam access-binding get":              {[]string{"getIAMAccessBinding"}, []string{"installation.administer", "namespace.read"}, ""},
-	"iam access-binding create":           {[]string{"createIAMAccessBinding"}, []string{"installation.administer", "namespace.read"}, "read on the bound resource"},
+	"iam access-binding create":           {[]string{"createIAMAccessBinding"}, []string{"installation.administer", "namespace.read"}, "read on the exact target for exact-resource bindings"},
 	"iam access-binding delete":           {[]string{"deleteIAMAccessBinding"}, []string{"installation.administer", "namespace.read"}, ""},
 	"iam service-principal create":        {[]string{"createIAMServicePrincipal"}, []string{"installation.administer", "namespace.read"}, ""},
 	"iam service-principal list":          {[]string{"listIAMServicePrincipals"}, []string{"installation.administer", "namespace.read"}, ""},

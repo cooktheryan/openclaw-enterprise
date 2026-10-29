@@ -27,10 +27,10 @@ every grant of the target at the same or a broader scope. OCC requires it before
 issuing or revoking a service key and before changing a human account; a Driver
 without it cannot issue or revoke service keys.
 
-| Method                  | Contract                                                                                                                                                                                                       |
-| ----------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `lookupIdentity(input)` | Takes an authenticated `issuer`, `subject`, and optional Namespace scope. Returns one provisioned Identity, or `undefined` when no identity can be established. It does not create an account or grant a Role. |
-| `authorize(request)`    | Takes a `principalId`, exact action, and server-owned resource reference. Returns an allow or deny decision with a reason, selected `driverId`, and evidence.                                                  |
+| Method                  | Contract                                                                                                                                                                                                                                                                                                                                          |
+| ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `lookupIdentity(input)` | Takes either an authenticated `issuer` and `subject`, an immutable `principalId`, or a `servicePrincipalId`, with optional Namespace scope. Returns one provisioned Identity, or `undefined` when no identity can be established. It does not create an account or grant a Role. `principalId` lookup supports managed Namespace-role assignment. |
+| `authorize(request)`    | Takes a `principalId`, exact action, and server-owned resource reference. Returns an allow or deny decision with a reason, selected `driverId`, and evidence.                                                                                                                                                                                     |
 
 Evidence identifies the contributing identity, Groups, AccessBindings, Roles,
 and Restrictions. OCC uses it to attribute audit records. The worker rejects
@@ -70,6 +70,9 @@ disposal hook.
 
 ### Native IAM behavior
 
+The native Driver resolves an immutable `principalId` only to a human Principal;
+Namespace service identities and Agents cannot receive the managed human-role
+binding. A selected Driver that cannot resolve this lookup refuses the assignment.
 The native Driver reads controller-owned IAM state once per PostgreSQL State unit
 of work, such as one list request, and validates and indexes it once there; a
 lookup or decision outside a unit opens its own. A later unit reads the policy
@@ -97,12 +100,12 @@ supported resource actions and Restrictions.
 
 ## Troubleshooting
 
-| Symptom                                      | What to check                                                                                                                                    |
-| -------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Valid credentials do not resolve an identity | Check the issuer and subject, Namespace scope, and that exactly one matching identity was provisioned. Signing in does not provision a Role.     |
-| A known identity is denied                   | Check the exact action and resource, applicable bindings and Roles, and overriding Restrictions. For a ServicePrincipal, check its own bindings. |
-| Previously queued work is denied             | Check whether the original caller or its grant was revoked. Restore only the intended permission or start a newly authorized operation.          |
-| IAM or policy storage is unavailable         | Restore the dependency and retry; never turn an error or malformed decision into an allow.                                                       |
+| Symptom                              | What to check                                                                                                                                    |
+| ------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------ |
+| An identity lookup returns no match  | Check its issuer and subject or `principalId`, Namespace scope, and that the identity was provisioned. Signing in does not provision a Role.     |
+| A known identity is denied           | Check the exact action and resource, applicable bindings and Roles, and overriding Restrictions. For a ServicePrincipal, check its own bindings. |
+| Previously queued work is denied     | Check whether the original caller or its grant was revoked. Restore only the intended permission or start a newly authorized operation.          |
+| IAM or policy storage is unavailable | Restore the dependency and retry; never turn an error or malformed decision into an allow.                                                       |
 
 ## Implementations
 

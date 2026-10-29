@@ -21706,6 +21706,10 @@
                           "description": "Whether the selected IAM Driver allows Agent administer now, which native admin UI access needs. Advisory only: other required permissions (native admin UI also needs a signed-in console session), lifecycle state, or a later authorization decision can still prevent the operation.",
                           "type": "boolean"
                         },
+                        "agentAuthor": {
+                          "description": "Whether the managed Agent Author Role contributes to update access for this Agent. When true, OCC reconciles exact credential grants for this Agent's ServicePrincipal during Agent and Configuration updates.",
+                          "type": "boolean"
+                        },
                         "agentSourcesOperate": {
                           "description": "Whether the selected IAM Driver allows, now, the source grants that each Agent update checks: Secret operate on every Secret that the Agent's Configuration binds and on a Secret Harness authentication source, credential source operate on every credential source the Agent lists or uses for Harness authentication, and ServiceAccount read on a ServiceAccount Harness authentication source. `true` when the Agent and its Configuration bind no source. Reported only to a caller with Agent update and Configuration read whose Agent settings are readable; otherwise `false`. Advisory only: other required permissions, lifecycle state, sources that an update adds, or a later authorization decision can still prevent the operation.",
                           "type": "boolean"
@@ -21755,6 +21759,7 @@
                       },
                       "required": [
                         "update",
+                        "agentAuthor",
                         "deploy",
                         "operate",
                         "delete",
@@ -28720,28 +28725,49 @@
           "content": {
             "application/json": {
               "schema": {
-                "additionalProperties": false,
-                "properties": {
-                  "resourceId": { "maxLength": 200, "minLength": 1, "type": "string" },
-                  "resourceKind": {
-                    "anyOf": [
-                      { "const": "namespace", "type": "string" },
-                      { "const": "agent", "type": "string" },
-                      { "const": "agent_revision", "type": "string" },
-                      { "const": "configuration", "type": "string" },
-                      { "const": "credential_source", "type": "string" },
-                      { "const": "sandbox_policy", "type": "string" },
-                      { "const": "preset", "type": "string" },
-                      { "const": "secret", "type": "string" },
-                      { "const": "service_account", "type": "string" }
-                    ]
+                "anyOf": [
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "resourceId": { "maxLength": 200, "minLength": 1, "type": "string" },
+                      "resourceKind": {
+                        "anyOf": [
+                          { "const": "namespace", "type": "string" },
+                          { "const": "agent", "type": "string" },
+                          { "const": "agent_revision", "type": "string" },
+                          { "const": "configuration", "type": "string" },
+                          { "const": "credential_source", "type": "string" },
+                          { "const": "sandbox_policy", "type": "string" },
+                          { "const": "preset", "type": "string" },
+                          { "const": "secret", "type": "string" },
+                          { "const": "service_account", "type": "string" }
+                        ]
+                      },
+                      "roleId": { "maxLength": 200, "minLength": 1, "type": "string" },
+                      "subjectId": { "maxLength": 200, "minLength": 1, "type": "string" },
+                      "subjectKind": { "const": "identity", "type": "string" }
+                    },
+                    "required": [
+                      "subjectKind",
+                      "subjectId",
+                      "roleId",
+                      "resourceKind",
+                      "resourceId"
+                    ],
+                    "type": "object"
                   },
-                  "roleId": { "maxLength": 200, "minLength": 1, "type": "string" },
-                  "subjectId": { "maxLength": 200, "minLength": 1, "type": "string" },
-                  "subjectKind": { "const": "identity", "type": "string" }
-                },
-                "required": ["subjectKind", "subjectId", "roleId", "resourceKind", "resourceId"],
-                "type": "object"
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "roleId": { "maxLength": 200, "minLength": 1, "type": "string" },
+                      "scope": { "const": "namespace", "type": "string" },
+                      "subjectId": { "maxLength": 200, "minLength": 1, "type": "string" },
+                      "subjectKind": { "const": "identity", "type": "string" }
+                    },
+                    "required": ["subjectKind", "subjectId", "roleId", "scope"],
+                    "type": "object"
+                  }
+                ]
               }
             }
           },
@@ -28895,7 +28921,7 @@
             "description": "Default Response"
           }
         },
-        "summary": "Create an immutable exact-resource Namespace IAM AccessBinding",
+        "summary": "Create an exact-resource binding or managed Agent Author Namespace binding",
         "tags": ["IAM"],
         "x-openclaw-permissions": [
           { "action": "administer", "resourceKind": "installation", "scope": "requested" },
@@ -29345,55 +29371,65 @@
           "content": {
             "application/json": {
               "schema": {
-                "additionalProperties": false,
-                "properties": {
-                  "name": {
-                    "maxLength": 200,
-                    "minLength": 1,
-                    "pattern": "^(?!\\s)(?!.*\\s$)[^\\u0000-\\u001f\\u007f-\\u009f\\u2028\\u2029]+$",
-                    "type": "string"
+                "anyOf": [
+                  {
+                    "additionalProperties": false,
+                    "properties": { "preset": { "const": "agent-author", "type": "string" } },
+                    "required": ["preset"],
+                    "type": "object"
                   },
-                  "permissions": {
-                    "items": {
-                      "additionalProperties": false,
-                      "properties": {
-                        "action": {
-                          "anyOf": [
-                            { "const": "create", "type": "string" },
-                            { "const": "read", "type": "string" },
-                            { "const": "update", "type": "string" },
-                            { "const": "delete", "type": "string" },
-                            { "const": "deploy", "type": "string" },
-                            { "const": "operate", "type": "string" },
-                            { "const": "administer", "type": "string" },
-                            { "const": "read_logs", "type": "string" },
-                            { "const": "manage_policy", "type": "string" }
-                          ]
-                        },
-                        "resourceKind": {
-                          "anyOf": [
-                            { "const": "namespace", "type": "string" },
-                            { "const": "agent", "type": "string" },
-                            { "const": "agent_revision", "type": "string" },
-                            { "const": "configuration", "type": "string" },
-                            { "const": "credential_source", "type": "string" },
-                            { "const": "sandbox_policy", "type": "string" },
-                            { "const": "preset", "type": "string" },
-                            { "const": "secret", "type": "string" },
-                            { "const": "service_account", "type": "string" }
-                          ]
-                        }
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "name": {
+                        "maxLength": 200,
+                        "minLength": 1,
+                        "pattern": "^(?!\\s)(?!.*\\s$)[^\\u0000-\\u001f\\u007f-\\u009f\\u2028\\u2029]+$",
+                        "type": "string"
                       },
-                      "required": ["action", "resourceKind"],
-                      "type": "object"
+                      "permissions": {
+                        "items": {
+                          "additionalProperties": false,
+                          "properties": {
+                            "action": {
+                              "anyOf": [
+                                { "const": "create", "type": "string" },
+                                { "const": "read", "type": "string" },
+                                { "const": "update", "type": "string" },
+                                { "const": "delete", "type": "string" },
+                                { "const": "deploy", "type": "string" },
+                                { "const": "operate", "type": "string" },
+                                { "const": "administer", "type": "string" },
+                                { "const": "read_logs", "type": "string" },
+                                { "const": "manage_policy", "type": "string" }
+                              ]
+                            },
+                            "resourceKind": {
+                              "anyOf": [
+                                { "const": "namespace", "type": "string" },
+                                { "const": "agent", "type": "string" },
+                                { "const": "agent_revision", "type": "string" },
+                                { "const": "configuration", "type": "string" },
+                                { "const": "credential_source", "type": "string" },
+                                { "const": "sandbox_policy", "type": "string" },
+                                { "const": "preset", "type": "string" },
+                                { "const": "secret", "type": "string" },
+                                { "const": "service_account", "type": "string" }
+                              ]
+                            }
+                          },
+                          "required": ["action", "resourceKind"],
+                          "type": "object"
+                        },
+                        "maxItems": 64,
+                        "minItems": 1,
+                        "type": "array"
+                      }
                     },
-                    "maxItems": 64,
-                    "minItems": 1,
-                    "type": "array"
+                    "required": ["permissions"],
+                    "type": "object"
                   }
-                },
-                "required": ["permissions"],
-                "type": "object"
+                ]
               }
             }
           },
@@ -29537,7 +29573,7 @@
             "description": "Default Response"
           }
         },
-        "summary": "Create an immutable Namespace IAM Role",
+        "summary": "Create an immutable Namespace IAM Role or managed Agent Author preset",
         "tags": ["IAM"],
         "x-openclaw-permissions": [
           { "action": "administer", "resourceKind": "installation", "scope": "requested" },
@@ -30124,12 +30160,16 @@
                         "agents": {
                           "additionalProperties": false,
                           "properties": {
+                            "agentAuthor": {
+                              "description": "Whether the Agent Author Role contributes to Agent creation in this Namespace now. When true, OCC creates exact credential grants for the Agent ServicePrincipal in the Agent mutation transaction. Advisory only: Restrictions or a later authorization decision can still prevent the operation.",
+                              "type": "boolean"
+                            },
                             "create": {
                               "description": "Whether the selected IAM Driver allows Agent creation in this Namespace now. Advisory only: other required permissions, lifecycle state, or a later authorization decision can still prevent the operation.",
                               "type": "boolean"
                             }
                           },
-                          "required": ["create"],
+                          "required": ["create", "agentAuthor"],
                           "type": "object"
                         },
                         "delete": {

@@ -1,7 +1,7 @@
 ---
 created: 2026-09-09
 updated: 2026-10-29
-last_updated_session: authoring-run/84c88245631c4882bd93c2140e0f313b
+last_updated_session: authoring-run/32233c9b-0a2e-4472-ae28-676de3a66fcd
 ---
 
 # Console Agent editing and runtime requests
@@ -245,6 +245,9 @@ grant leaves Configuration saved; a 403 names the Installation administrator, wh
 says access was not verified until **Reload draft**. An administrator's console checks every
 bound Secret's grant, as deployment does; Deploy waits for those reads and rechecks before its
 POST, and a save or Retry during one reads again before naming Deploy.
+When the caller holds the managed Agent Author Role, the Configuration update transaction creates
+exact `operate` bindings for the Agent ServicePrincipal. The Console skips the separate IAM grant
+and its readback; a later deployment still checks the saved references.
 `agents/credentials.mjs:missingChannelCredentialGroups` reads token keys as the Slack Channel
 Driver does; pickers appear only for standard keys. A 400 that
 `agents/list.mjs:channelBindingRefusal` matches shows the API's message. An uncertain PATCH
@@ -265,6 +268,10 @@ deleting the old source or revoking grants. After PATCH,
 grants the Agent service principal exact Secret (`api_key` or imported `codex_pat`)
 or CredentialSource `operate` through the actor's IAM authority. Managed
 ServiceAccount PATs and runtime authentication skip this grant.
+
+For an Agent Author, the Agent update transaction creates exact grants for the selected credential
+references. After a replacement revision becomes active, the worker removes generated grants for
+references no longer used by the Agent or its current Configuration. Existing custom grants remain.
 
 Grant failure preserves saved authentication and freezes controls;
 `apps/controller/src/console/agents/credentials.mjs:grantWarning` words it as the
@@ -346,6 +353,7 @@ Moved to [Agent stop and deletion](agent-stop-and-deletion.md#8-confirm-deletion
 
 ## Changelog
 
+- 2026-10-29 10:06: Describe transactional credential grants and replacement cleanup for Agent Authors. (authoring-run/32233c9b-0a2e-4472-ae28-676de3a66fcd - 3b9f76e11c3a7ffb5997de61c1e448370c521a92)
 - 2026-10-29 03:49: Clear a completed Secret refresh hint while selection permission is pending. Accompanying uncommitted changes. (authoring-run/84c88245631c4882bd93c2140e0f313b - b81139ddfe086aca0e4da4eb5b9feedc8ac39d67)
 
 - 2026-10-28 13:53: Keep the reader’s fold through routine polls and show failed record checks outside it. (fix-3285 - 14f6d94db)

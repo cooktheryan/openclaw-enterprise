@@ -972,6 +972,9 @@ export function installFixture(scenario, evidence) {
       });
     }
     if (path === "/installation" && method === "GET") {
+      if (scenario.installationDenied) {
+        return error(403);
+      }
       return response({
         id: "ins_00000000-0000-4000-8000-000000000001",
         name: "Demo installation",
@@ -1099,7 +1102,7 @@ export function installFixture(scenario, evidence) {
         if (resource === "permissions" && namespaces.some((item) => item.id === ns)) {
           return response({
             delete: !scenario.namespaceDeleteDenied,
-            agents: { create: true },
+            agents: { create: true, agentAuthor: false },
             secrets: { create: true },
             installation: { administer: !scenario.observabilityDenied },
           });
@@ -1374,6 +1377,7 @@ export function installFixture(scenario, evidence) {
           delete: !scenario.namespaceDeleteDenied,
           agents: {
             create: !scenario.readOnlyPermissionSummary && !scenario.agentCreateRestricted,
+            agentAuthor: scenario.agentAuthor === true,
           },
           secrets: { create: !scenario.secretCreateNotPermitted },
           // A read-only member is no Installation administrator either.
@@ -1965,6 +1969,7 @@ export function installFixture(scenario, evidence) {
           return response(
             scenario.agentPermissionSummary ?? {
               update: allowed,
+              agentAuthor: scenario.agentAuthor === true,
               deploy: allowed,
               operate: allowed,
               delete: allowed,

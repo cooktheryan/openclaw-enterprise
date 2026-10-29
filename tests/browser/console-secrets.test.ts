@@ -29,6 +29,9 @@ import {
   SECRET_UPDATE_DENIED,
   tooManyRequestsIn,
 } from "../helpers/refusal-text.mjs";
+
+type CustomIAMRoleBody = Extract<CreateIAMRoleBody, { permissions: unknown }>;
+type ExactIAMAccessBindingBody = Extract<CreateIAMAccessBindingBody, { resourceKind: unknown }>;
 import { createConsoleAppFixture } from "../helpers/console-app.mjs";
 import { consoleStorage } from "../helpers/console-storage.mjs";
 import { createTestSecretDriver } from "../helpers/secret-driver.mjs";
@@ -332,12 +335,12 @@ test("console Secret writes honor read-only access, revocation and a new Agent r
   const memberId = member.principal.id;
   const iam = `/namespaces/${namespace.id}/iam`;
   async function grant(
-    action: CreateIAMRoleBody["permissions"][number]["action"],
-    resourceKind: CreateIAMAccessBindingBody["resourceKind"],
+    action: CustomIAMRoleBody["permissions"][number]["action"],
+    resourceKind: ExactIAMAccessBindingBody["resourceKind"],
     resourceId: string,
   ) {
     const createdRole = await fixture.request("POST", `${iam}/roles`, {
-      body: { permissions: [{ action, resourceKind }] } satisfies CreateIAMRoleBody,
+      body: { permissions: [{ action, resourceKind }] } satisfies CustomIAMRoleBody,
     });
     assert.equal(createdRole.status, 201, JSON.stringify(createdRole.body));
     const { data: role }: IAMRoleResponse = createdRole.body;
@@ -349,7 +352,7 @@ test("console Secret writes honor read-only access, revocation and a new Agent r
         roleId: role.id,
         resourceKind,
         resourceId,
-      } satisfies CreateIAMAccessBindingBody,
+      } satisfies ExactIAMAccessBindingBody,
     });
     assert.equal(createdBinding.status, 201, JSON.stringify(createdBinding.body));
     const { data: binding }: IAMAccessBindingResponse = createdBinding.body;

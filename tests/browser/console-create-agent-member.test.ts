@@ -5,6 +5,7 @@ import type { Page, Route } from "playwright";
 
 import type {
   AgentResponse,
+  IAMAccessBindingListResponse,
   NamespaceListResponse,
   NamespaceWire,
   SecretWire,
@@ -193,6 +194,81 @@ test("a member with Agent create completes the default Preset path without Insta
       .filter({ visible: true })
       .count(),
     0,
+  );
+});
+
+test("an Agent Author uses the scoped Console and gets exact credential grants", async (t) => {
+  const fixture = await createConsoleAppFixture(t, {
+    defaultPresets: [defaultCodexPreset],
+    provisionedPeople: [],
+  });
+  await fixture.bootstrap();
+  const namespace = await fixture.createNamespace("Agent Author team", { ready: true });
+  const secret = await fixture.createSecret(namespace.id, "Team OpenAI key", "sk-agent-author");
+  const author = await fixture.createAccountWithPolicy("agent-author", () => {});
+  const iam = `/namespaces/${namespace.id}/iam`;
+  const role = await fixture.request("POST", `${iam}/roles`, {
+    body: { preset: "agent-author" },
+  });
+  assert.equal(role.status, 201, JSON.stringify(role.body));
+  const binding = await fixture.request("POST", `${iam}/access-bindings`, {
+    body: {
+      subjectKind: "identity",
+      subjectId: author.principal.id,
+      roleId: role.data.id,
+      scope: "namespace",
+    },
+  });
+  assert.equal(binding.status, 201, JSON.stringify(binding.body));
+
+  const { page } = await newPage(t, fixture);
+  const answers = apiResponses(page, fixture.origin);
+  await login(page, fixture, `/console/agents?namespace=${namespace.id}`, author.credentials);
+  const open = page.getByRole("button", { name: "Create Agent", exact: true });
+  await waitForEnabled(open);
+  await open.click();
+  await fillDefaultPreset(page, secret, "Agent Author Agent");
+
+  assert.deepEqual(
+    answers.filter((answer) => answer.startsWith("GET /installation ")),
+    ["GET /installation 403"],
+  );
+  const access = page.locator("#create-agent-access");
+  await access.waitFor({ state: "visible" });
+  assert.deepEqual(await access.locator(".status-body").allTextContents(), [
+    "You can create Agents in Agent Author team. Installation-wide capabilities are not readable with your access, so the options below come from this Namespace's Presets. OCC gives the Agent access only to the credential resources you bind.",
+  ]);
+
+  const createdResponse = page.waitForResponse(
+    (response) =>
+      response.url() === `${fixture.origin}/namespaces/${namespace.id}/agents` &&
+      response.request().method() === "POST",
+  );
+  await page.getByRole("button", { name: "Create Agent", exact: true }).click();
+  const response = await createdResponse;
+  assert.equal(response.status(), 201);
+  const { data: created }: AgentResponse = await response.json();
+  assert.equal(created.name, "Agent Author Agent");
+  assert.deepEqual(created.harnessAuth, { method: "api_key", source: secret.ref });
+
+  const bindings = await fixture.request("GET", `${iam}/access-bindings`);
+  assert.equal(bindings.status, 200, JSON.stringify(bindings.body));
+  const { data: savedBindings }: IAMAccessBindingListResponse = bindings.body;
+  assert.ok(
+    savedBindings.some(
+      (item) =>
+        item.subjectId === created.servicePrincipalId &&
+        "resourceKind" in item &&
+        item.resourceKind === "secret" &&
+        item.resourceId === secret.id &&
+        item.roleId === `role_${namespace.id}_agent_secret_operate`,
+    ),
+    "the Agent mutation grants only its bound Secret to the Agent ServicePrincipal",
+  );
+  assert.deepEqual(
+    answers.filter((answer) => answer.includes("/iam/")),
+    [],
+    "the assigned human can use the Console without reading or changing IAM policy",
   );
 });
 

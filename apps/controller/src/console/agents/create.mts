@@ -756,9 +756,10 @@ export function renderCreateAgent(context: CreateAgentContext, restored?: unknow
   );
 }
 
-// A member's Agent reaches its Secrets through an Installation administrator's grant (UX plan A2).
 const MEMBER_CREDENTIAL_ACCESS =
   "An Installation administrator then gives the new Agent access to its Secrets.";
+const AGENT_AUTHOR_CREDENTIAL_ACCESS =
+  "OCC gives the Agent access only to the credential resources you bind.";
 const MEMBER_GRANT_REFUSED = `The Agent was created as a draft. Giving it access to its saved model and channel Secrets needs Installation administration. ${askAdministratorTo("open the saved Agent and grant it")}`;
 const INSTALLATION_REFUSAL = `Creating an Agent needs Installation access that your account does not have. ${askAdministratorTo("create this Agent")}`;
 // The Installation read was refused and the Namespace's permission answer is unknown (its read
@@ -1788,9 +1789,9 @@ function renderAgentForm(
   let namespacePermissions = context.permissions;
   let permissionsUnknown = false;
   let permissionsReading = false;
+  let credentialGrantRefused = false;
   // Granting the saved Agent its credential access is Installation administration, which the API
   // refused this account: a retry cannot succeed, so the form offers none (finding 2109).
-  let credentialGrantRefused = false;
   const provisionableExecutionModes = new Set();
   let nativeWorkersAvailable = false;
   // The OpenClaw execution modes the Installation admits, or undefined from a server that does
@@ -1846,6 +1847,48 @@ function renderAgentForm(
     [],
     { id: "create-agent-access", hidden: true },
   );
+  function updateAccessStatusMessage() {
+    const body = accessStatus.querySelector(".status-body");
+    if (!body) {
+      return;
+    }
+    const access = namespacePermissions?.agents?.agentAuthor
+      ? AGENT_AUTHOR_CREDENTIAL_ACCESS
+      : MEMBER_CREDENTIAL_ACCESS;
+    body.textContent = `${
+      typeof presetOptions.presetName === "string"
+        ? `You can create Agents in ${namespaceName}. Installation-wide capabilities are not readable with your access, so the options below come from this Namespace's Presets.`
+        : `You can create Agents in ${namespaceName}. Installation-wide capabilities are not readable with your access, so Create Agent checks the Configuration with the server before saving it.`
+    } ${access}`;
+  }
+  async function grantConfigurationSecretAccess(
+    agent: Pick<Agent, "servicePrincipalId">,
+    secrets: SecretMetadata[],
+    configuration: SavedConfiguration,
+  ) {
+    const bindings = Object.values(configuration.secretBindings ?? {});
+    const seen = new Set();
+    for (const secret of secrets) {
+      if (
+        secret.namespaceId !== namespaceId ||
+        seen.has(secret.id) ||
+        !bindings.some(
+          (binding) =>
+            binding?.source?.kind === "secret" &&
+            binding.source.namespaceId === namespaceId &&
+            binding.source.id === secret.id &&
+            binding.delivery?.type === "env",
+        )
+      ) {
+        continue;
+      }
+      seen.add(secret.id);
+      if (!context.isCurrent()) {
+        throw new Error("This view has changed. Reopen Agent creation before binding Secrets.");
+      }
+      await ensureCredentialOperateBinding(context, agent, secret);
+    }
+  }
   // The Preset this form started from (flows.md C8).
   const presetBadge =
     typeof presetOptions.presetName === "string"
@@ -2285,34 +2328,6 @@ function renderAgentForm(
         responseFields(config).enabled !== false
       );
     });
-  }
-  async function grantConfigurationSecretAccess(
-    agent: Pick<Agent, "servicePrincipalId">,
-    secrets: SecretMetadata[],
-    configuration: SavedConfiguration,
-  ) {
-    const bindings = Object.values(configuration.secretBindings ?? {});
-    const seen = new Set();
-    for (const secret of secrets) {
-      if (
-        secret.namespaceId !== namespaceId ||
-        seen.has(secret.id) ||
-        !bindings.some(
-          (binding) =>
-            binding?.source?.kind === "secret" &&
-            binding.source.namespaceId === namespaceId &&
-            binding.source.id === secret.id &&
-            binding.delivery?.type === "env",
-        )
-      ) {
-        continue;
-      }
-      seen.add(secret.id);
-      if (!context.isCurrent()) {
-        throw new Error("This view has changed. Reopen Agent creation before binding Secrets.");
-      }
-      await ensureCredentialOperateBinding(context, agent, secret);
-    }
   }
   function renderChannelEditor() {
     const values = parseObject(configuration);
@@ -3092,6 +3107,7 @@ function renderAgentForm(
     if (create === true) {
       capabilitiesUnreadable = true;
       accessStatus.hidden = false;
+      updateAccessStatusMessage();
       return;
     }
     capabilityStatus.textContent = permissionsUnknown ? PERMISSIONS_UNREAD : INSTALLATION_REFUSAL;
@@ -3710,8 +3726,7 @@ function renderAgentForm(
             },
           }),
         );
-        // The next step grants this principal access to the selected Secrets. Confirm the
-        // response belongs to this create before using it, and leave an uncertain write locked.
+        // Confirm the response belongs to this create before granting access to its credentials.
         const { id, servicePrincipalId } = created;
         if (
           created.namespaceId !== namespaceId ||
@@ -3732,7 +3747,6 @@ function renderAgentForm(
         }
         showSavedStatus();
       }
-      // Grant retries reread exact bindings, so uncertain model or channel grants never recreate the Agent.
       mutationStarted = false;
       const credential =
         savedSecret ??
@@ -3751,7 +3765,7 @@ function renderAgentForm(
         Object.values(savedConfiguration.secretBindings ?? {}).some(
           (binding) => binding?.source?.kind === "secret",
         );
-      if (needsCredentialAccess) {
+      if (needsCredentialAccess && namespacePermissions?.agents?.agentAuthor !== true) {
         if (context.installationAdmin === false) {
           credentialGrantRefused = true;
           feedback.textContent = MEMBER_GRANT_REFUSED;
@@ -3827,8 +3841,6 @@ function renderAgentForm(
       }
       const registrationProblem =
         error.status && error.status >= 400 ? ` ${describeFailure(cause, { mutation: true })}` : "";
-      // A refused grant on a saved Agent shows this text only to an Installation administrator (a
-      // member sees MEMBER_GRANT_REFUSED below), so its denial names nobody to ask (finding 2113).
       const detail = credentialRegistration
         ? `Credential Source registration could not be confirmed.${registrationProblem} Check credential registration before retrying; the selected Secret remains saved.`
         : savedAgent
@@ -3873,8 +3885,6 @@ function renderAgentForm(
         savedConfiguration && refusedPlugin
           ? ` This form cannot edit saved Configuration ${savedConfiguration.id}. Deselect plugin ${refusedPlugin} under Plugins and select Create Agent again; to use the plugin, fix the setting on the new Agent's Configuration tab, then select the plugin on its Plugins tab.`
           : "";
-      // A member's grant of the new Agent's credential access is refused as Installation
-      // administration: name who finishes it (UX plan A2), and offer no retry of it (finding 2109).
       const memberGrantRefused =
         Boolean(savedAgent) &&
         !credentialRegistration &&

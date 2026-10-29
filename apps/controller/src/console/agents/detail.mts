@@ -2860,7 +2860,11 @@ export async function renderAgentDetail(
     const panelNumber = ++channelPanelCount;
     const credentials = !runtimeAuth
       ? createChannelSecretsPanel({
-          context: { ...context, secretsOperateDenied },
+          context: {
+            ...context,
+            agentAuthor: callerPermissions?.agentAuthor === true,
+            secretsOperateDenied,
+          },
           path,
           agent,
           configuration: snapshot,
@@ -4336,14 +4340,16 @@ export async function renderAgentDetail(
             configurationSaved = true;
             details = null;
             const ungranted = (options.changedSecrets ?? []).map((secret) => secret.ref);
-            if (ungranted.length && context.installationAdmin === false) {
-              // This session is known not to administer the Installation, so it sends no grant
-              // the API would refuse and audit. Credentials says nothing verified the Agent's
-              // access and names who grants it, as the harness path does (findings 2109, 2263).
+            if (
+              ungranted.length &&
+              context.installationAdmin === false &&
+              callerPermissions?.agentAuthor !== true
+            ) {
+              // Existing members still cannot edit IAM policy; the managed Role's Agent
+              // transaction is the only non-admin path that grants these exact credentials.
               const kept = (outstandingChannelGrants?.secrets ?? []).filter(
                 (secret) => !ungranted.some((next) => next.id === secret.id),
               );
-              // A grant an earlier request left refused or unconfirmed keeps its problem and Retry.
               setOutstandingChannelGrants({
                 secrets: [...kept, ...ungranted],
                 problem: kept.length
@@ -4362,7 +4368,11 @@ export async function renderAgentDetail(
                 if (!context.isCurrent()) {
                   return;
                 }
-                await ensureCredentialOperateBinding(context, freshAgent, ungranted[0]!);
+                await ensureCredentialOperateBinding(
+                  { ...context, agentAuthor: callerPermissions?.agentAuthor === true },
+                  freshAgent,
+                  ungranted[0]!,
+                );
                 ungranted.shift();
               }
             } catch (cause) {
@@ -4830,12 +4840,13 @@ export async function renderAgentDetail(
             details = null;
           }
           const credential = harnessCredential(harnessAuth, context.namespaceId);
-          if (credential && context.installationAdmin === false) {
-            // Granting writes IAM policy, which needs Installation administration. The session
-            // already knows this member lacks it, so it sends no grant that would be refused, and
-            // no IAM read either (findings 2109, 2259). The save is finished: the card rebuilds
-            // editable, with one status that says the deploy checks the Agent's access and who
-            // gives it, and Deploy is not held (findings 2547, D748).
+          if (
+            credential &&
+            context.installationAdmin === false &&
+            callerPermissions?.agentAuthor !== true
+          ) {
+            // The existing member path leaves exact credential grants to Installation admins.
+            // Agent Author assignments receive those grants in the Agent mutation transaction.
             if (context.isCurrent()) {
               context.drafts.forget("authentication");
               await refreshDraftInPlace({
@@ -4855,7 +4866,11 @@ export async function renderAgentDetail(
                 : "Authentication saved. Checking Secret access…",
             );
             grantRequested = true;
-            await ensureCredentialOperateBinding(context, current, credential);
+            await ensureCredentialOperateBinding(
+              { ...context, agentAuthor: callerPermissions?.agentAuthor === true },
+              current,
+              credential,
+            );
           }
           if (context.isCurrent()) {
             context.drafts.forget("authentication");

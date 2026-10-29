@@ -1360,9 +1360,25 @@ export interface AuthorizationEvidence {
 
 export type IdentityLookup = Scope &
   (
-    | { readonly issuer: string; readonly subject: string; readonly servicePrincipalId?: never }
+    | {
+        readonly issuer: string;
+        readonly subject: string;
+        readonly principalId?: never;
+        readonly servicePrincipalId?: never;
+      }
+    | {
+        readonly principalId: string;
+        readonly issuer?: never;
+        readonly subject?: never;
+        readonly servicePrincipalId?: never;
+      }
     // Supplied only after credential verification or authorized credential management.
-    | { readonly servicePrincipalId: string; readonly issuer?: never; readonly subject?: never }
+    | {
+        readonly servicePrincipalId: string;
+        readonly issuer?: never;
+        readonly subject?: never;
+        readonly principalId?: never;
+      }
   );
 
 /** `access` records an audited read, such as viewing or downloading runtime log text. */
@@ -1728,15 +1744,16 @@ export interface IAMManagedRoleInput {
   readonly permissions: readonly Permission[];
 }
 
-export interface IAMManagedAccessBindingInput {
+export type IAMManagedAccessBindingInput = {
   readonly id: string;
   readonly namespaceId: string;
   readonly subjectKind: "identity";
   readonly subjectId: string;
   readonly roleId: string;
-  readonly resourceKind: ManagedIAMResourceKind;
-  readonly resourceId: string;
-}
+} & (
+  | { readonly resourceKind: ManagedIAMResourceKind; readonly resourceId: string }
+  | { readonly resourceKind?: never; readonly resourceId?: never }
+);
 
 /** A non-Agent automation identity fixed to one Namespace; it carries no grant. */
 export interface IAMManagedServicePrincipalInput {

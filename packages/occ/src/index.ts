@@ -1026,20 +1026,33 @@ export interface CreateConfigurationInput {
   readonly secretBindings?: SecretBindings;
 }
 
-export interface CreateIAMRoleInput {
-  readonly namespaceId: string;
-  readonly name?: string;
-  readonly permissions: readonly Permission[];
-}
+export type CreateIAMRoleInput =
+  | {
+      readonly namespaceId: string;
+      readonly preset: "agent-author";
+      readonly name?: never;
+      readonly permissions?: never;
+    }
+  | {
+      readonly namespaceId: string;
+      readonly preset?: never;
+      readonly name?: string;
+      readonly permissions: readonly Permission[];
+    };
 
-export interface CreateIAMAccessBindingInput {
+export type CreateIAMAccessBindingInput = {
   readonly namespaceId: string;
   readonly subjectKind: "identity";
   readonly subjectId: string;
   readonly roleId: string;
-  readonly resourceKind: ResourceKind;
-  readonly resourceId: string;
-}
+} & (
+  | { readonly scope: "namespace"; readonly resourceKind?: never; readonly resourceId?: never }
+  | {
+      readonly scope?: never;
+      readonly resourceKind: ResourceKind;
+      readonly resourceId: string;
+    }
+);
 
 export interface UpdateConfigurationInput {
   readonly namespaceId: string;
@@ -1845,7 +1858,56 @@ const SANDBOX_DRIVER_WITHOUT_NETWORK_POLICY =
  * binding creation share the reason so their refusals stay consistent.
  */
 const NAMESPACE_POLICY_CREATE_REASON =
-  "Create is checked on the Namespace, and this API binds only exact resources";
+  "Create is checked on the Namespace; only the managed Agent Author Role uses a Namespace binding";
+
+const AGENT_AUTHOR_ROLE_NAME = "Agent Author";
+const AGENT_AUTHOR_ROLE_PERMISSIONS: readonly Permission[] = Object.freeze([
+  { action: "read", resourceKind: "namespace" },
+  { action: "create", resourceKind: "agent" },
+  { action: "read", resourceKind: "agent" },
+  { action: "update", resourceKind: "agent" },
+  { action: "delete", resourceKind: "agent" },
+  { action: "deploy", resourceKind: "agent" },
+  { action: "operate", resourceKind: "agent" },
+  { action: "read_logs", resourceKind: "agent" },
+  { action: "read", resourceKind: "agent_revision" },
+  { action: "create", resourceKind: "configuration" },
+  { action: "read", resourceKind: "configuration" },
+  { action: "update", resourceKind: "configuration" },
+  { action: "delete", resourceKind: "configuration" },
+  { action: "create", resourceKind: "secret" },
+  { action: "read", resourceKind: "secret" },
+  { action: "update", resourceKind: "secret" },
+  { action: "delete", resourceKind: "secret" },
+  { action: "operate", resourceKind: "secret" },
+  { action: "create", resourceKind: "credential_source" },
+  { action: "read", resourceKind: "credential_source" },
+  { action: "update", resourceKind: "credential_source" },
+  { action: "delete", resourceKind: "credential_source" },
+  { action: "operate", resourceKind: "credential_source" },
+  { action: "read", resourceKind: "service_account" },
+  { action: "read", resourceKind: "preset" },
+  { action: "read", resourceKind: "sandbox_policy" },
+]);
+
+function agentAuthorRoleId(namespaceId: string): string {
+  return `role_${namespaceId}_agent_author`;
+}
+
+function hasAgentAuthorPermissions(role: Readonly<Role>, namespaceId: string): boolean {
+  return (
+    role.id === agentAuthorRoleId(namespaceId) &&
+    role.namespaceId === namespaceId &&
+    role.name === AGENT_AUTHOR_ROLE_NAME &&
+    role.permissions.length === AGENT_AUTHOR_ROLE_PERMISSIONS.length &&
+    AGENT_AUTHOR_ROLE_PERMISSIONS.every((expected) =>
+      role.permissions.some(
+        (actual) =>
+          actual.action === expected.action && actual.resourceKind === expected.resourceKind,
+      ),
+    )
+  );
+}
 
 /**
  * Refuses an AccessBinding whose Role cannot take effect on the binding's target, so a
@@ -2351,25 +2413,54 @@ export class OpenClawController {
   }
 
   async createIAMRole(principalId: string, input: CreateIAMRoleInput): Promise<Readonly<Role>> {
-    const permissions = this.iamRolePermissions(input.permissions);
-    if (input.name !== undefined && !isName(input.name)) {
-      throw new IAMPolicyValidationError("/name", "The IAM Role name is invalid.");
-    }
     const namespace = await this.admitIAMPolicyOperation(principalId, input.namespaceId);
     const driver = this.iamPolicyDriver("createNamespaceRole");
+    const roleReader =
+      input.preset === "agent-author" ? this.iamPolicyDriver("getNamespaceRole") : undefined;
+    const roleInput =
+      input.preset === "agent-author"
+        ? {
+            id: agentAuthorRoleId(namespace.id),
+            namespaceId: namespace.id,
+            name: AGENT_AUTHOR_ROLE_NAME,
+            permissions: AGENT_AUTHOR_ROLE_PERMISSIONS,
+          }
+        : (() => {
+            const permissions = this.iamRolePermissions(input.permissions);
+            if (input.name !== undefined && !isName(input.name)) {
+              throw new IAMPolicyValidationError("/name", "The IAM Role name is invalid.");
+            }
+            return {
+              id: `role_${crypto.randomUUID()}`,
+              namespaceId: namespace.id,
+              ...(input.name === undefined ? {} : { name: input.name }),
+              permissions,
+            };
+          })();
     return this.mutate(async (state) => {
       await this.holdIAMPolicyAuthority(state, principalId, namespace.id);
-      return this.iamPolicyOperation(() =>
-        driver.createNamespaceRole!(
-          { policy: state.iamPolicy },
-          {
-            id: `role_${crypto.randomUUID()}`,
-            namespaceId: namespace.id,
-            ...(input.name === undefined ? {} : { name: input.name }),
-            permissions,
-          },
-        ),
+      if (input.preset === "agent-author") {
+        const existing = await this.iamPolicyOperation(() =>
+          roleReader!.getNamespaceRole!({ policy: state.iamPolicy }, namespace.id, roleInput.id),
+        );
+        if (existing !== undefined) {
+          if (!hasAgentAuthorPermissions(existing, namespace.id)) {
+            throw new ResourceConflictError(
+              "The canonical Agent Author Role has conflicting permissions.",
+            );
+          }
+          return existing;
+        }
+      }
+      const created = await this.iamPolicyOperation(() =>
+        driver.createNamespaceRole!({ policy: state.iamPolicy }, roleInput),
       );
+      if (input.preset === "agent-author" && !hasAgentAuthorPermissions(created, namespace.id)) {
+        throw new DependencyUnavailableError(
+          "The selected IAM Driver returned a different Agent Author Role.",
+        );
+      }
+      return created;
     });
   }
 
@@ -2452,48 +2543,102 @@ export class OpenClawController {
     if (!isNonEmptyString(input.roleId)) {
       throw new IAMPolicyValidationError("/roleId", "The IAM AccessBinding Role is invalid.");
     }
-    this.assertNamespacePolicyResourceKind(input.resourceKind);
-    if (!isNonEmptyString(input.resourceId)) {
-      throw new IAMPolicyValidationError(
-        "/resourceId",
-        "The IAM AccessBinding resource is invalid.",
-      );
-    }
     const namespace = await this.admitIAMPolicyOperation(principalId, input.namespaceId);
-    await this.authorize(principalId, "read", {
-      kind: input.resourceKind,
-      id: input.resourceId,
-      namespaceId: namespace.id,
-    });
-    await this.verifyNamespacePolicyResource(namespace.id, input.resourceKind, input.resourceId);
     const driver = this.iamPolicyDriver("createNamespaceAccessBinding");
     const roles = this.iamPolicyDriver("getNamespaceRole");
-    return this.mutate(async (state) => {
-      await this.holdIAMPolicyAuthority(state, principalId, namespace.id, {
+    if (input.scope !== "namespace") {
+      this.assertNamespacePolicyResourceKind(input.resourceKind);
+      if (!isNonEmptyString(input.resourceId)) {
+        throw new IAMPolicyValidationError(
+          "/resourceId",
+          "The IAM AccessBinding resource is invalid.",
+        );
+      }
+      await this.authorize(principalId, "read", {
         kind: input.resourceKind,
         id: input.resourceId,
         namespaceId: namespace.id,
       });
+      await this.verifyNamespacePolicyResource(namespace.id, input.resourceKind, input.resourceId);
+    }
+    return this.mutate(async (state) => {
+      await this.holdIAMPolicyAuthority(
+        state,
+        principalId,
+        namespace.id,
+        input.scope === "namespace"
+          ? undefined
+          : {
+              kind: input.resourceKind,
+              id: input.resourceId,
+              namespaceId: namespace.id,
+            },
+      );
       const role = await this.iamPolicyOperation(() =>
         roles.getNamespaceRole!({ policy: state.iamPolicy }, namespace.id, input.roleId),
       );
-      if (role !== undefined) {
+      if (input.scope === "namespace") {
+        if (input.roleId !== agentAuthorRoleId(namespace.id)) {
+          throw new IAMPolicyValidationError(
+            "/roleId",
+            "Only the managed Agent Author Role can have a Namespace-scoped binding.",
+          );
+        }
+        if (role === undefined || !hasAgentAuthorPermissions(role, namespace.id)) {
+          throw new ResourceConflictError(
+            "The canonical Agent Author Role is unavailable or has conflicting permissions.",
+          );
+        }
+        const identityDriver = this.authorizationAuthority(principalId);
+        const identity = await this.iamPolicyOperation(() =>
+          identityDriver.lookupIdentity({
+            principalId: input.subjectId,
+            namespaceId: namespace.id,
+          }),
+        );
+        if (identity?.kind !== "principal" || identity.id !== input.subjectId) {
+          throw new IAMPolicyValidationError(
+            "/subjectId",
+            "A Namespace Agent Author binding requires a human Principal.",
+          );
+        }
+      } else if (role !== undefined) {
         assertAccessBindingRoleApplies(role, input.resourceKind);
       }
-      return this.iamPolicyOperation(() =>
+      const bindingId = `binding_${crypto.randomUUID()}`;
+      const created = await this.iamPolicyOperation(() =>
         driver.createNamespaceAccessBinding!(
           { policy: state.iamPolicy },
           {
-            id: `binding_${crypto.randomUUID()}`,
+            id: bindingId,
             namespaceId: namespace.id,
             subjectKind: "identity",
             subjectId: input.subjectId,
             roleId: input.roleId,
-            resourceKind: input.resourceKind as ManagedIAMResourceKind,
-            resourceId: input.resourceId,
+            ...(input.scope === "namespace"
+              ? {}
+              : {
+                  resourceKind: input.resourceKind as ManagedIAMResourceKind,
+                  resourceId: input.resourceId,
+                }),
           },
         ),
       );
+      if (
+        created.id !== bindingId ||
+        created.namespaceId !== namespace.id ||
+        created.subjectKind !== "identity" ||
+        created.subjectId !== input.subjectId ||
+        created.roleId !== input.roleId ||
+        (input.scope === "namespace"
+          ? created.resourceKind !== undefined || created.resourceId !== undefined
+          : created.resourceKind !== input.resourceKind || created.resourceId !== input.resourceId)
+      ) {
+        throw new DependencyUnavailableError(
+          "The selected IAM Driver returned a different Namespace AccessBinding.",
+        );
+      }
+      return created;
     });
   }
 
@@ -7516,7 +7661,7 @@ export class OpenClawController {
     }
     const values = frozenValues(input.values);
     return this.mutate(async (state) => {
-      await this.authorize(principalId, "update", {
+      const updateAuthorization = await this.authorize(principalId, "update", {
         kind: "configuration",
         id: input.configurationId,
         namespaceId: input.namespaceId,
@@ -7602,7 +7747,29 @@ export class OpenClawController {
         }
       });
       const updated = await this.driverOperation(() => driver.update(configuration));
-      return this.exactConfiguration(updated, advanced);
+      const saved = this.exactConfiguration(updated, advanced);
+      for (const agent of await state.agents.listAgents(namespace.id)) {
+        if (agent.configurationId !== saved.id) {
+          continue;
+        }
+        const grantSources = await this.provisioningGrantSources(state, namespace.id, {
+          secretBindings,
+          harnessAuth: this.harnessAuthBinding(agent.harnessAuth),
+          credentialSources: agent.credentialSources ?? [],
+        });
+        if (
+          updateAuthorization.decision.evidence.roleIds.includes(agentAuthorRoleId(namespace.id))
+        ) {
+          await this.ensureAgentOperateGrants(
+            state,
+            namespace.id,
+            agent,
+            grantSources,
+            principalId,
+          );
+        }
+      }
+      return saved;
     });
   }
 
@@ -9448,7 +9615,7 @@ export class OpenClawController {
         id: input.namespaceId,
         namespaceId: input.namespaceId,
       };
-      await this.authorize(principalId, "create", target);
+      const createAuthorization = await this.authorize(principalId, "create", target);
       await this.authorizeGatewayManagedModeChange(principalId, input.gatewayManagedMode === false);
       this.requireGatewayManagedModeSupport(gatewayManagedMode);
       const namespace = await this.lockNamespace(state, input.namespaceId);
@@ -9535,6 +9702,16 @@ export class OpenClawController {
           files: initialWorkspaceFiles,
           completed: false,
         });
+      }
+      const grantSources = await this.provisioningGrantSources(state, namespace.id, {
+        ...(configuration.secretBindings === undefined
+          ? {}
+          : { secretBindings: configuration.secretBindings }),
+        harnessAuth,
+        credentialSources: credentialSources ?? [],
+      });
+      if (createAuthorization.decision.evidence.roleIds.includes(agentAuthorRoleId(namespace.id))) {
+        await this.ensureAgentOperateGrants(state, namespace.id, agent, grantSources, principalId);
       }
       return agent;
     });
@@ -9814,7 +9991,7 @@ export class OpenClawController {
       input.pluginApprovers === null ? null : normalizeAgentPluginApprovers(input.pluginApprovers);
     this.namespaceIdentity(input.namespaceId);
     return this.mutate(async (state) => {
-      await this.authorize(principalId, "update", {
+      const updateAuthorization = await this.authorize(principalId, "update", {
         kind: "agent",
         id: input.agentId,
         namespaceId: input.namespaceId,
@@ -9963,6 +10140,22 @@ export class OpenClawController {
       );
       if (!updated) {
         throw new ResourceStateConflictError("The Agent Configuration changed during its update.");
+      }
+      const grantSources = await this.provisioningGrantSources(state, namespace.id, {
+        ...(configuration.secretBindings === undefined
+          ? {}
+          : { secretBindings: configuration.secretBindings }),
+        harnessAuth: requestedAuth === undefined ? previousAuth : requestedAuth,
+        credentialSources: updated.credentialSources ?? [],
+      });
+      if (updateAuthorization.decision.evidence.roleIds.includes(agentAuthorRoleId(namespace.id))) {
+        await this.ensureAgentOperateGrants(
+          state,
+          namespace.id,
+          updated,
+          grantSources,
+          principalId,
+        );
       }
       const activeApprovals = (
         await state.repositorySessions.listStandingApprovals(namespace.id, agent.id)
@@ -13049,8 +13242,9 @@ export class OpenClawController {
           ? {}
           : { secretBindings: plan.configuration.secretBindings }),
         harnessAuth: plan.harnessAuth,
+        credentialSources: agent.credentialSources ?? [],
       });
-      await this.ensureAgentOperateGrants(state, namespace.id, agent, grantSources);
+      await this.ensureAgentOperateGrants(state, namespace.id, agent, grantSources, record.actorId);
       return this.commitProvisioningCheckpoint(state, claim, {
         completedPhase: "configuration",
         status: "running",
@@ -13168,28 +13362,32 @@ export class OpenClawController {
     input: {
       readonly secretBindings?: SecretBindings;
       readonly harnessAuth: HarnessAuthBinding | null;
+      readonly credentialSources?: readonly AgentCredentialSourceBinding[];
     },
   ): Promise<readonly (SecretReference | CredentialSourceReference)[]> {
-    const ids = new Set<string>();
+    const secretIds = new Set<string>();
     for (const binding of Object.values(input.secretBindings ?? {})) {
-      ids.add(binding.source.id);
+      secretIds.add(binding.source.id);
     }
     if (isSecretHarnessAuth(input.harnessAuth)) {
-      ids.add(input.harnessAuth.source.id);
+      secretIds.add(input.harnessAuth.source.id);
     }
     const sources: (SecretReference | CredentialSourceReference)[] = [];
-    for (const id of ids) {
+    for (const id of secretIds) {
       const secret = await state.secrets.lockSecret(namespaceId, id);
       if (secret === undefined) {
         throw new ScopeViolationError("Agent provisioning Secret grant source is unavailable.");
       }
       sources.push({ kind: "secret", namespaceId, id: secret.id });
     }
+    const credentialSourceIds = new Set(
+      (input.credentialSources ?? []).map(({ sourceId }) => sourceId),
+    );
     if (input.harnessAuth?.method === "credential_source") {
-      const source = await state.credentialSources.lockCredentialSource(
-        namespaceId,
-        input.harnessAuth.sourceId,
-      );
+      credentialSourceIds.add(input.harnessAuth.sourceId);
+    }
+    for (const id of credentialSourceIds) {
+      const source = await state.credentialSources.lockCredentialSource(namespaceId, id);
       if (source === undefined || source.state !== "ready") {
         throw new ScopeViolationError("Agent provisioning credential source is unavailable.");
       }
@@ -13203,18 +13401,84 @@ export class OpenClawController {
     namespaceId: string,
     agent: Readonly<Agent>,
     sources: readonly (SecretReference | CredentialSourceReference)[],
+    actorId: string,
   ): Promise<void> {
-    if (sources.length === 0) {
+    const desired = new Map<string, SecretReference | CredentialSourceReference>();
+    const add = (source: SecretReference | CredentialSourceReference) => {
+      desired.set(`${source.kind}\u0000${source.id}`, source);
+    };
+    for (const source of sources) {
+      add(source);
+    }
+    if (agent.activeRevisionId !== undefined) {
+      const active = await state.revisions.findRevision(
+        namespaceId,
+        agent.id,
+        agent.activeRevisionId,
+      );
+      if (active === undefined) {
+        throw new DependencyUnavailableError("The Agent's active revision is unavailable.");
+      }
+      for (const binding of Object.values(active.secretBindings ?? {})) {
+        add(binding.source);
+      }
+      if (
+        (active.harnessAuth.method === "api_key" || active.harnessAuth.method === "codex_pat") &&
+        active.harnessAuth.source.kind === "secret"
+      ) {
+        add(active.harnessAuth.source);
+      }
+      const credentialSourceIds = new Set(
+        (active.credentialSources ?? []).map(({ sourceId }) => sourceId),
+      );
+      if (active.harnessAuth.method === "credential_source") {
+        credentialSourceIds.add(active.harnessAuth.sourceId);
+      }
+      for (const id of credentialSourceIds) {
+        add({ kind: "credential_source", namespaceId, id });
+      }
+    }
+    const wanted = [...desired.values()];
+    const bindings = await state.iamPolicy.listAccessBindings(namespaceId);
+    const ownedBindings = bindings.filter((binding) => {
+      if (
+        binding.namespaceId !== namespaceId ||
+        binding.subjectKind !== "identity" ||
+        binding.subjectId !== agent.servicePrincipalId ||
+        (binding.resourceKind !== "secret" && binding.resourceKind !== "credential_source") ||
+        !binding.resourceId
+      ) {
+        return false;
+      }
+      const roleId = `role_${namespaceId}_agent_${binding.resourceKind}_operate`;
+      return (
+        binding.roleId === roleId &&
+        [
+          `binding_${agent.id}_${binding.resourceKind}_${binding.resourceId}_operate`,
+          `binding_${agent.id}_${binding.resourceId}_operate`,
+        ].includes(binding.id)
+      );
+    });
+    const stale = ownedBindings.filter(
+      (binding) => !desired.has(`${binding.resourceKind}\u0000${binding.resourceId}`),
+    );
+    if (wanted.length === 0 && stale.length === 0) {
       return;
     }
     const driver = this.iamPolicyDriver("createNamespaceAccessBinding");
-    if (driver.namespacePolicyTransaction !== "platform-unit-of-work") {
+    if (
+      driver.namespacePolicyTransaction !== "platform-unit-of-work" ||
+      (wanted.length > 0 &&
+        (typeof driver.createNamespaceRole !== "function" ||
+          typeof driver.createNamespaceAccessBinding !== "function")) ||
+      (stale.length > 0 && typeof driver.deleteNamespaceAccessBinding !== "function")
+    ) {
       throw new DependencyUnavailableError(
-        "The selected IAM Driver does not support provisioning policy transactions.",
+        "The selected IAM Driver does not support the required transactional Agent credential grants and cleanup.",
       );
     }
     for (const resourceKind of ["secret", "credential_source"] as const) {
-      const matching = sources.filter((source) => source.kind === resourceKind);
+      const matching = wanted.filter((source) => source.kind === resourceKind);
       if (matching.length === 0) {
         continue;
       }
@@ -13223,7 +13487,9 @@ export class OpenClawController {
       const existingRole = await state.iamPolicy.getRole(namespaceId, roleId);
       if (
         existingRole !== undefined &&
-        (existingRole.namespaceId !== namespaceId ||
+        (existingRole.id !== roleId ||
+          existingRole.namespaceId !== namespaceId ||
+          existingRole.name !== `Agent ${displayName} operate` ||
           existingRole.permissions.length !== 1 ||
           existingRole.permissions[0]?.action !== "operate" ||
           existingRole.permissions[0]?.resourceKind !== resourceKind)
@@ -13233,7 +13499,7 @@ export class OpenClawController {
         );
       }
       if (existingRole === undefined) {
-        await this.iamPolicyOperation(() =>
+        const createdRole = await this.iamPolicyOperation(() =>
           driver.createNamespaceRole!(
             { policy: state.iamPolicy },
             {
@@ -13244,8 +13510,18 @@ export class OpenClawController {
             },
           ),
         );
+        if (
+          createdRole.id !== roleId ||
+          createdRole.namespaceId !== namespaceId ||
+          createdRole.permissions.length !== 1 ||
+          createdRole.permissions[0]?.action !== "operate" ||
+          createdRole.permissions[0]?.resourceKind !== resourceKind
+        ) {
+          throw new DependencyUnavailableError(
+            "The selected IAM Driver returned a different Agent credential Role.",
+          );
+        }
       }
-      const bindings = await state.iamPolicy.listAccessBindings(namespaceId);
       for (const source of matching) {
         const exists = bindings.some(
           (binding) =>
@@ -13258,11 +13534,12 @@ export class OpenClawController {
         if (exists) {
           continue;
         }
-        await this.iamPolicyOperation(() =>
+        const bindingId = `binding_${agent.id}_${resourceKind}_${source.id}_operate`;
+        const created = await this.iamPolicyOperation(() =>
           driver.createNamespaceAccessBinding!(
             { policy: state.iamPolicy },
             {
-              id: `binding_${agent.id}_${source.id}_operate`,
+              id: bindingId,
               namespaceId,
               subjectKind: "identity",
               subjectId: agent.servicePrincipalId,
@@ -13272,7 +13549,72 @@ export class OpenClawController {
             },
           ),
         );
+        if (
+          created.id !== bindingId ||
+          created.namespaceId !== namespaceId ||
+          created.subjectKind !== "identity" ||
+          created.subjectId !== agent.servicePrincipalId ||
+          created.roleId !== roleId ||
+          created.resourceKind !== resourceKind ||
+          created.resourceId !== source.id
+        ) {
+          throw new DependencyUnavailableError(
+            "The selected IAM Driver returned a different Agent credential grant.",
+          );
+        }
+        await state.audit.append({
+          id: `aud_${crypto.randomUUID()}`,
+          installationId: this.installation.id,
+          namespaceId,
+          occurredAt: this.timestamp(),
+          kind: "mutation",
+          actorId,
+          source: "occ",
+          action: "openclaw.iam.agent_credential_grant",
+          resource: { kind: resourceKind, id: source.id, namespaceId },
+          iamDriverId: driver.id,
+          outcome: "success",
+          details: {
+            agentId: agent.id,
+            servicePrincipalId: agent.servicePrincipalId,
+            roleId,
+            bindingId,
+          },
+        });
       }
+    }
+    for (const binding of stale) {
+      const removed = await this.iamPolicyOperation(() =>
+        driver.deleteNamespaceAccessBinding!({ policy: state.iamPolicy }, namespaceId, binding.id),
+      );
+      if (!removed) {
+        throw new DependencyUnavailableError(
+          "The selected IAM Driver did not remove a stale Agent credential grant.",
+        );
+      }
+      await state.audit.append({
+        id: `aud_${crypto.randomUUID()}`,
+        installationId: this.installation.id,
+        namespaceId,
+        occurredAt: this.timestamp(),
+        kind: "mutation",
+        actorId,
+        source: "occ",
+        action: "openclaw.iam.agent_credential_grant_removed",
+        resource: {
+          kind: binding.resourceKind as "secret" | "credential_source",
+          id: binding.resourceId!,
+          namespaceId,
+        },
+        iamDriverId: driver.id,
+        outcome: "success",
+        details: {
+          agentId: agent.id,
+          servicePrincipalId: agent.servicePrincipalId,
+          roleId: binding.roleId,
+          bindingId: binding.id,
+        },
+      });
     }
   }
 

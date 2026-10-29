@@ -738,6 +738,183 @@ test(
 );
 
 test(
+  "PostgreSQL OCC assigns the managed Agent Author Role to one human in one Namespace",
+  requiresPostgres,
+  async (context) => {
+    const { Pool } = await import("pg");
+    const pool = new Pool({ connectionString: databaseUrl });
+    context.after(() => pool.end());
+    const state = new PostgresPlatformState(pool);
+    const iam = new NativeIAMDriver(state, { id: "postgres-agent-author" });
+    const { installation, namespace, agent } = await createNamespaceAgentState(state);
+    const foreign = await createNamespaceAgentState(state);
+    const principal = await createHumanPrincipal(state);
+    const persisted = await state.loadNativeIAMState(installation.id);
+    const administratorRoleIds = new Set(
+      persisted.roles
+        .filter((role) =>
+          role.permissions.some(
+            (permission) =>
+              permission.action === "administer" && permission.resourceKind === "installation",
+          ),
+        )
+        .map(({ id }) => id),
+    );
+    const administrator = persisted.bindings.find(
+      (binding) => binding.subjectKind === "identity" && administratorRoleIds.has(binding.roleId),
+    );
+    assert.ok(administrator, "the fixture must have a real Installation administrator");
+    const controller = new OpenClawController(installation, { state, recordOperations: false });
+    controller.registerDriver(iam);
+    controller.selectDriver("iam", iam.id);
+
+    const role = await controller.createIAMRole(administrator.subjectId, {
+      namespaceId: namespace.id,
+      preset: "agent-author",
+    });
+    assert.equal(role.id, `role_${namespace.id}_agent_author`);
+    assert.equal(role.name, "Agent Author");
+    assert.deepEqual(role.permissions, [
+      { action: "read", resourceKind: "namespace" },
+      { action: "create", resourceKind: "agent" },
+      { action: "read", resourceKind: "agent" },
+      { action: "update", resourceKind: "agent" },
+      { action: "delete", resourceKind: "agent" },
+      { action: "deploy", resourceKind: "agent" },
+      { action: "operate", resourceKind: "agent" },
+      { action: "read_logs", resourceKind: "agent" },
+      { action: "read", resourceKind: "agent_revision" },
+      { action: "create", resourceKind: "configuration" },
+      { action: "read", resourceKind: "configuration" },
+      { action: "update", resourceKind: "configuration" },
+      { action: "delete", resourceKind: "configuration" },
+      { action: "create", resourceKind: "secret" },
+      { action: "read", resourceKind: "secret" },
+      { action: "update", resourceKind: "secret" },
+      { action: "delete", resourceKind: "secret" },
+      { action: "operate", resourceKind: "secret" },
+      { action: "create", resourceKind: "credential_source" },
+      { action: "read", resourceKind: "credential_source" },
+      { action: "update", resourceKind: "credential_source" },
+      { action: "delete", resourceKind: "credential_source" },
+      { action: "operate", resourceKind: "credential_source" },
+      { action: "read", resourceKind: "service_account" },
+      { action: "read", resourceKind: "preset" },
+      { action: "read", resourceKind: "sandbox_policy" },
+    ]);
+    assert.deepEqual(
+      await controller.createIAMRole(administrator.subjectId, {
+        namespaceId: namespace.id,
+        preset: "agent-author",
+      }),
+      role,
+      "repeating the preset request returns the immutable managed Role",
+    );
+    const binding = await controller.createIAMAccessBinding(administrator.subjectId, {
+      namespaceId: namespace.id,
+      subjectKind: "identity",
+      subjectId: principal.id,
+      roleId: role.id,
+      scope: "namespace",
+    });
+    assert.equal(binding.namespaceId, namespace.id);
+    assert.equal(binding.resourceKind, undefined);
+    assert.equal(binding.resourceId, undefined);
+
+    const authorize = (action, resource) =>
+      iam.authorize({ principalId: principal.id, action, resource });
+    assert.equal(
+      (await authorize("create", { kind: "agent", id: namespace.id, namespaceId: namespace.id }))
+        .allowed,
+      true,
+    );
+    assert.equal(
+      (await authorize("update", { kind: "agent", id: agent.id, namespaceId: namespace.id }))
+        .allowed,
+      true,
+    );
+    for (const action of ["delete", "deploy", "operate", "read_logs"]) {
+      assert.equal(
+        (await authorize(action, { kind: "agent", id: agent.id, namespaceId: namespace.id }))
+          .allowed,
+        true,
+        `Agent Author must allow agent:${action} in its Namespace`,
+      );
+    }
+    assert.equal(
+      (await authorize("create", { kind: "secret", id: namespace.id, namespaceId: namespace.id }))
+        .allowed,
+      true,
+    );
+    assert.equal(
+      (
+        await authorize("read", {
+          kind: "service_account",
+          id: "sa_00000000-0000-4000-8000-000000000001",
+          namespaceId: namespace.id,
+        })
+      ).allowed,
+      true,
+    );
+    assert.equal(
+      (
+        await authorize("create", {
+          kind: "service_account",
+          id: namespace.id,
+          namespaceId: namespace.id,
+        })
+      ).allowed,
+      false,
+      "Agent Authors can use but cannot create ServiceAccounts",
+    );
+    assert.equal(
+      (
+        await authorize("create", {
+          kind: "agent",
+          id: foreign.namespace.id,
+          namespaceId: foreign.namespace.id,
+        })
+      ).allowed,
+      false,
+    );
+    assert.equal(
+      (
+        await authorize("administer", {
+          kind: "installation",
+          id: installation.id,
+        })
+      ).allowed,
+      false,
+    );
+    await assert.rejects(
+      controller.listIAMRoles(principal.id, namespace.id),
+      AuthorizationDeniedError,
+      "Agent Authors cannot inspect or change IAM policy",
+    );
+    await assert.rejects(
+      controller.createIAMRole(principal.id, {
+        namespaceId: namespace.id,
+        permissions: [{ action: "create", resourceKind: "agent" }],
+      }),
+      AuthorizationDeniedError,
+    );
+    await assert.rejects(
+      controller.createIAMAccessBinding(administrator.subjectId, {
+        namespaceId: namespace.id,
+        subjectKind: "identity",
+        subjectId: agent.servicePrincipalId,
+        roleId: role.id,
+        scope: "namespace",
+      }),
+      { name: "IAMPolicyValidationError", message: /human Principal/ },
+    );
+
+    const saved = await state.read((unit) => unit.iamPolicy.listAccessBindings(namespace.id));
+    assert.deepEqual(saved, [binding], "PostgreSQL must persist the untargeted Namespace binding");
+  },
+);
+
+test(
   "PostgreSQL native IAM rolls back policy mutations when transaction audit fails",
   requiresPostgres,
   async (context) => {

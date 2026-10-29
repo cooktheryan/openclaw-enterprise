@@ -9,6 +9,8 @@ import { chromium } from "playwright";
 import { prepareQaConsoleTheme } from "./qa-installation.mjs";
 import { waitFor } from "./qa-utils.mjs";
 import { submitChatTurnWithAssistantProof, waitForStockUi } from "./native-ui-chat.mjs";
+import { renderPresetTemplate } from "../../packages/contracts/src/index.ts";
+import { protectedText } from "./qa-secrets.mjs";
 
 export async function createQaBrowser(f, { themed }) {
   if (themed) {
@@ -120,6 +122,212 @@ export async function createQaBrowser(f, { themed }) {
   });
   return {
     nativeOrigin: f.controlPlane === "compose" ? nativeOrigin : undefined,
+    async verifyAgentAuthor(presetName, nameSuffix, verify) {
+      const nameLabel = nameSuffix.replace(/^-/, "");
+      const email = `qa-agent-author-${randomUUID()}@example.test`;
+      const password = `qa-agent-author-${randomUUID()}-Password`;
+      const account = await page.evaluate(
+        async ({ email, password }) => {
+          const response = await fetch("/api/auth/accounts", {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({ email, password, name: "QA Agent Author" }),
+          });
+          return { status: response.status, body: await response.json() };
+        },
+        { email, password },
+      );
+      assert.equal(account.status, 201, "Installation administrator must create the test account");
+      const principalId = account.body.data.principalId;
+      assert.equal(typeof principalId, "string");
+
+      const authorContext = await browser.browser().newContext();
+      const authorPage = await authorContext.newPage();
+      try {
+        await authorPage.goto(`${f.consoleUrl}/console/`);
+        await authorPage.getByLabel("Email", { exact: true }).fill(email);
+        await authorPage.getByLabel("Password").fill(password);
+        const signedIn = authorPage.waitForResponse(
+          (response) =>
+            new URL(response.url()).pathname === "/api/auth/sign-in/email" &&
+            response.request().method() === "POST",
+        );
+        await authorPage.getByRole("button", { name: "Sign in", exact: true }).click();
+        assert.equal((await signedIn).status(), 200, "test user sign-in must succeed");
+
+        const request = async (method, path, body, expectedStatus = 200) => {
+          const result = await authorPage.evaluate(
+            async ({ method, path, body }) => {
+              const response = await fetch(path, {
+                method,
+                headers: body === undefined ? {} : { "content-type": "application/json" },
+                ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+              });
+              const text = await response.text();
+              return { status: response.status, body: text ? JSON.parse(text) : undefined };
+            },
+            { method, path, body },
+          );
+          assert.equal(
+            result.status,
+            expectedStatus,
+            `${method} ${path} must return ${expectedStatus}`,
+          );
+          return result.body?.data;
+        };
+
+        assert.deepEqual(await request("GET", "/namespaces"), []);
+        const deniedConfiguration = await f.api(
+          "POST",
+          `/namespaces/${f.namespace.id}/configurations`,
+          { kind: "agent", values: {} },
+        );
+        await request(
+          "POST",
+          `/namespaces/${f.namespace.id}/agents`,
+          {
+            name: `qa-unassigned-${nameLabel}`,
+            configurationId: deniedConfiguration.id,
+            executionMode: "embedded",
+          },
+          403,
+        );
+        const authorRole = await f.api("POST", `/namespaces/${f.namespace.id}/iam/roles`, {
+          preset: "agent-author",
+        });
+        const binding = await f.api("POST", `/namespaces/${f.namespace.id}/iam/access-bindings`, {
+          subjectKind: "identity",
+          subjectId: principalId,
+          roleId: authorRole.id,
+          scope: "namespace",
+        });
+        assert.equal(binding.namespaceId, f.namespace.id);
+        assert.equal(binding.resourceKind, undefined);
+        assert.equal(binding.resourceId, undefined);
+
+        assert.deepEqual(
+          (await request("GET", "/namespaces")).map(({ id }) => id),
+          [f.namespace.id],
+        );
+        await request("GET", "/installation", undefined, 403);
+        await request("GET", `/namespaces/${f.namespace.id}/iam/roles`, undefined, 403);
+
+        const selected = (await request("GET", `/namespaces/${f.namespace.id}/presets`)).find(
+          ({ name }) => name === `Standard ${presetName}`,
+        );
+        assert.ok(selected, `Standard ${presetName} Preset must be readable`);
+        const preset = await request("GET", `/namespaces/${f.namespace.id}/presets/${selected.id}`);
+        const codex = presetName === "Codex";
+        const credential = await protectedText(
+          process.env[codex ? "OCC_TEST_QA_CODEX_TOKEN_FILE" : "OCC_TEST_QA_OPENAI_KEY_FILE"],
+          "model credential",
+        );
+        const model =
+          process.env[codex ? "OCC_TEST_QA_CODEX_MODEL" : "OCC_TEST_QA_OPENAI_MODEL"] ||
+          "gpt-6-luna";
+        const rendered = renderPresetTemplate(preset.template, {
+          name: `qa-${f.suffix}-${presetName}-${nameLabel}`,
+          model,
+          modelSecret: "provided-through-secret-api",
+        });
+        const values = rendered.configuration.values;
+        values.gateway.http = { endpoints: { chatCompletions: { enabled: true } } };
+        values.agents.defaults.skipBootstrap = true;
+        const configuration = await request(
+          "POST",
+          `/namespaces/${f.namespace.id}/configurations`,
+          { ...rendered.configuration, kind: "agent" },
+          201,
+        );
+        const secret = await request(
+          "POST",
+          `/namespaces/${f.namespace.id}/secrets`,
+          { name: `${rendered.agent.name}-model`, value: credential },
+          201,
+        );
+        const harnessAuth = {
+          method: codex ? "codex_pat" : "api_key",
+          source: { kind: "secret", namespaceId: f.namespace.id, id: secret.id },
+        };
+        const agent = await request(
+          "POST",
+          `/namespaces/${f.namespace.id}/agents`,
+          {
+            ...rendered.agent,
+            configurationId: configuration.id,
+            harnessAuth,
+          },
+          201,
+        );
+        Object.assign(agent, {
+          preset: presetName,
+          qaScenario: nameSuffix,
+          configuration,
+          harnessAuth,
+        });
+        f.agents.push(agent);
+
+        const confirmed = await request(
+          "PATCH",
+          `/namespaces/${f.namespace.id}/agents/${agent.id}`,
+          { configurationId: configuration.id },
+        );
+        assert.equal(confirmed.id, agent.id, "Agent Author can update an Agent");
+        await request(
+          "POST",
+          `/namespaces/${f.namespace.id}/agents/${agent.id}/runtime-credentials`,
+          {},
+        );
+        const revision = await request(
+          "POST",
+          `/namespaces/${f.namespace.id}/agents/${agent.id}/deploy`,
+          {},
+          202,
+        );
+        await f.deployAndWait(agent, { revision });
+        const bindings = await f.api("GET", `/namespaces/${f.namespace.id}/iam/access-bindings`);
+        assert.ok(
+          bindings.some(
+            (candidate) =>
+              candidate.subjectId === agent.servicePrincipalId &&
+              candidate.resourceKind === "secret" &&
+              candidate.resourceId === secret.id,
+          ),
+          "the Agent ServicePrincipal must receive its exact model Secret grant",
+        );
+        assert.equal(
+          bindings.some(
+            (candidate) =>
+              candidate.subjectId === agent.servicePrincipalId &&
+              candidate.resourceKind === "secret" &&
+              candidate.resourceId !== secret.id,
+          ),
+          false,
+          "the Agent ServicePrincipal must not receive unrelated Secret grants",
+        );
+        await verify(agent, request);
+        await request("POST", `/namespaces/${f.namespace.id}/agents/${agent.id}/stop`, {});
+        await request("DELETE", `/namespaces/${f.namespace.id}/agents/${agent.id}`, undefined, 202);
+        await f.waitFor("Agent Author Agent deletion", async () => {
+          const agents = await f.api("GET", `/namespaces/${f.namespace.id}/agents`);
+          return !agents.some(({ id }) => id === agent.id);
+        });
+        agent.stopped = true;
+        await f.record(`${presetName}-agent-author`, {
+          principalId,
+          namespaceId: f.namespace.id,
+          agentId: agent.id,
+          revisionId: revision.id,
+          explicitRoleAssignment: true,
+          installationAccessDenied: true,
+          iamEditingDenied: true,
+          exactCredentialGrant: true,
+          createdUpdatedDeployedStoppedDeleted: true,
+        });
+      } finally {
+        await authorContext.close();
+      }
+    },
     async verifySecrets(agent) {
       const secretsPage = await browser.newPage();
       const base = `/namespaces/${agent.namespaceId}`;

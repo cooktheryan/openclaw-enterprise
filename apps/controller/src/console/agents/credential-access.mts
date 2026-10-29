@@ -13,6 +13,7 @@ export type AgentAccessContext = Pick<
   "request" | "isCurrent" | "onExpired"
 > & {
   namespaceId: string;
+  agentAuthor?: boolean | undefined;
   // The IDs of readable Secrets the caller may not operate, which binding one to the Agent needs
   // (finding 2453); undefined when the answer is unknown. Secret fields mark and refuse them.
   secretsOperateDenied?: SecretsOperateDenied | undefined;
@@ -178,6 +179,11 @@ export async function ensureCredentialOperateBinding(
   agent: Pick<Agent, "servicePrincipalId">,
   credential: CredentialReference | { readonly ref: CredentialReference },
 ) {
+  // Agent Author mutations grant exact references in the Agent transaction; the Role does not
+  // permit IAM policy reads or writes. Other users retain the existing administrator grant path.
+  if (context.agentAuthor === true) {
+    return;
+  }
   const source = "ref" in credential ? credential.ref : credential;
   const resourceKind = source.kind;
   if (

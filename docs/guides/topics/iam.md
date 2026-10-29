@@ -100,6 +100,29 @@ A new account starts with no access. As a human Installation administrator:
    with your session cookie and `Origin: $OCC_ORIGIN`; read the Role ID from
    `.data.id`.
 
+   To let a person create and manage Agents in one Namespace through the
+   existing OCC Console, assign the managed Agent Author Role after creating
+   their account. Set `OCC_NAMESPACE` to the target Namespace:
+
+   ```bash
+   printf '{"preset":"agent-author"}' > role.json
+   ROLE_ID="$(occ iam role create --file role.json -o json | jq -r .id)"
+   jq -n --arg p "$PRINCIPAL_ID" --arg r "$ROLE_ID" \
+     '{subjectKind:"identity",subjectId:$p,roleId:$r,scope:"namespace"}' > binding.json
+   occ iam access-binding create --file binding.json
+   rm role.json binding.json
+   ```
+
+   This assignment is for the human `principalId`; it does not grant that
+   person Kubernetes API access. The person can manage every Agent and its
+   Configurations, Secrets, and credential sources in the assigned Namespace.
+   The Role also lets them use any Secret in that Namespace, so assign it only
+   where that shared access is intended. It does not grant Installation or IAM
+   administration, or ServiceAccount creation. A matching Restriction still
+   denies an operation. Removing the AccessBinding prevents later OCC requests;
+   it does not stop running Agents or revoke credentials already delivered. See
+   [Agent Author permissions](../../reference/authorization.md#agent-author-role).
+
 5. For a person who signs in with a password, give them the password from
    `account.json` through your own secure channel, then delete the file.
 
@@ -124,10 +147,11 @@ nobody uses. It is still a credential:
   sign-in. On a password-only Installation they return `409`, so an abandoned
   account there cannot be disabled.
 
-Add actions such as `update` or `deploy` to the Role for more access; see
-[Authorization](../../reference/authorization.md) for actions and scope. Role
-creation refuses `create` Permissions, and a binding refuses a Role with none
-for its target's kind, because those grants could never apply.
+Add actions such as `update` or `deploy` to a custom Role for more access; see
+[Authorization](../../reference/authorization.md) for actions and scope. Custom
+Role creation refuses `create` Permissions. The managed Agent Author preset is
+the only Namespace-wide create grant. A binding also refuses a Role with no
+Permission for its target's kind.
 
 Use Namespace bindings for everyone who is not an Installation administrator.
 

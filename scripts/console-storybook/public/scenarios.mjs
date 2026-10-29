@@ -1901,6 +1901,20 @@ export const scenarios = {
       "Choose Reset template and confirm to restore the standard runtime settings for the selected model.",
     ],
   },
+  createAgentAuthor: {
+    group: "Pages/Create Agent",
+    name: "Agent Author credential access",
+    path: create,
+    installationDenied: true,
+    agentAuthor: true,
+    actions: form,
+    description:
+      "A Namespace-scoped Agent Author can use the existing Console without Installation access. OCC grants the new Agent only the credential resources selected in its Configuration.",
+    steps: [
+      "Check that the access note says OCC gives the Agent access only to the credential resources you bind.",
+      "Choose an existing model Secret and confirm the form can submit without opening Namespace IAM or asking an Installation administrator to grant the Agent access.",
+    ],
+  },
   createSecretCreateNotPermitted: {
     group: "Pages/Create Agent",
     name: "Secret creation not permitted",

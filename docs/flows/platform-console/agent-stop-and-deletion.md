@@ -1,7 +1,7 @@
 ---
 created: 2026-10-20
-updated: 2026-10-20
-last_updated_session: 8b95a6fb-7095-4556-9028-0723f32cc534
+updated: 2026-10-29
+last_updated_session: authoring-run/32233c9b-0a2e-4472-ae28-676de3a66fcd
 ---
 
 # Console Agent stop and deletion
@@ -19,6 +19,7 @@ from confirmation to readback. See the [parent flow](../platform-console.md) and
 - `apps/controller/src/console/agents/detail.mts:renderAgentDetail` mounts both as rows of one **Danger zone** card;
   [Agents list rows](#stop-or-delete-from-an-agents-list-row) also offer them.
 - A signed-in caller needs Agent `operate` to stop and Agent `delete` to delete.
+  The managed Agent Author Role grants both actions across the Namespace, including Agents created by other people.
 
 ## Flow
 
@@ -145,6 +146,7 @@ uncertain outcome, the requested row’s actions stay disabled until **Refresh**
 
 ## Changelog
 
+- 2026-10-29 10:06: State that Agent Author stop and delete permissions cover all Agents in the Namespace. (authoring-run/32233c9b-0a2e-4472-ae28-676de3a66fcd - 3b9f76e11c3a7ffb5997de61c1e448370c521a92)
 - 2026-10-20 08:02: Trace Stop and Delete from Agents list rows, moved from the Agent editing flow, in the accompanying merge. (8b95a6fb-7095-4556-9028-0723f32cc534 - a8fb50b1babb68f3eb759841f92b042da039248e)
 - 2026-10-20 07:57: Describe deletion discovered by a stop-status read in the accompanying change. (authoring-run/28365356-ae7e-47dc-9790-888c3592251f - 6aedac546aad8308b4e9954648268f14545e39b2)
 - 2026-10-20 05:00: Split from the Agent editing flow's steps 7 and 8. (docs-split-1020)

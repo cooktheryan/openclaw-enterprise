@@ -750,6 +750,10 @@ export const AgentCallerPermissionsResponse = Type.Object(
           description:
             "Whether the selected IAM Driver allows Agent update now. Advisory only: other required permissions, lifecycle state, or a later authorization decision can still prevent the operation.",
         }),
+        agentAuthor: Type.Boolean({
+          description:
+            "Whether the managed Agent Author Role contributes to update access for this Agent. When true, OCC reconciles exact credential grants for this Agent's ServicePrincipal during Agent and Configuration updates.",
+        }),
         deploy: Type.Boolean({
           description:
             "Whether the selected IAM Driver allows Agent deploy now. Advisory only: other required permissions, lifecycle state, or a later authorization decision can still prevent the operation.",
@@ -857,6 +861,10 @@ export const NamespaceCallerPermissionsResponse = Type.Object(
             create: Type.Boolean({
               description:
                 "Whether the selected IAM Driver allows Agent creation in this Namespace now. Advisory only: other required permissions, lifecycle state, or a later authorization decision can still prevent the operation.",
+            }),
+            agentAuthor: Type.Boolean({
+              description:
+                "Whether the Agent Author Role contributes to Agent creation in this Namespace now. When true, OCC creates exact credential grants for the Agent ServicePrincipal in the Agent mutation transaction. Advisory only: Restrictions or a later authorization decision can still prevent the operation.",
             }),
           },
           { additionalProperties: false },

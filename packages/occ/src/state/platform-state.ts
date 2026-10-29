@@ -3349,6 +3349,12 @@ function repositories(
           "Namespace IAM Roles support only Namespace read.",
         );
       }
+      if (role.namespaceId !== namespace.id) {
+        throw new IAMPolicyValidationError(
+          "/roleId",
+          "The IAM AccessBinding Role does not belong to this Namespace.",
+        );
+      }
       assertBindingSubjectNotEmail(binding.subjectId);
       if (
         binding.subjectKind !== "identity" ||
@@ -3360,9 +3366,13 @@ function repositories(
         );
       }
       if (
-        binding.resourceKind === undefined ||
-        binding.resourceId === undefined ||
-        !(await managedPolicyResourceExists(namespace.id, binding.resourceKind, binding.resourceId))
+        (binding.resourceKind === undefined) !== (binding.resourceId === undefined) ||
+        (binding.resourceKind !== undefined &&
+          !(await managedPolicyResourceExists(
+            namespace.id,
+            binding.resourceKind,
+            binding.resourceId!,
+          )))
       ) {
         throw new IAMPolicyValidationError(
           "/resourceId",

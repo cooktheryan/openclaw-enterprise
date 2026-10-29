@@ -172,6 +172,44 @@ test(
                     },
                   ],
                   [
+                    "agent-author",
+                    async (_agent, step) => {
+                      await step(
+                        "assigned Namespace role, denied Installation access, and real Agent turn",
+                        async () => {
+                          assert.ok(browser, "blocked by browser setup failure");
+                          await browser.verifyAgentAuthor(
+                            preset,
+                            "-agent-author",
+                            async (authorAgent, request) => {
+                              const gateway = await f.gatewayUrl(authorAgent);
+                              try {
+                                const nonce = `QA_AGENT_AUTHOR_${randomUUID()}`;
+                                await assertGatewayModelTurn({
+                                  gatewayUrl: gateway.url,
+                                  gatewayPassword: gateway.gatewayPassword,
+                                  nonce,
+                                  secrets: [
+                                    await protectedText(
+                                      process.env.OCC_TEST_QA_CODEX_TOKEN_FILE,
+                                      "Codex service-account credential",
+                                    ),
+                                  ],
+                                });
+                                await request(
+                                  "GET",
+                                  `/namespaces/${authorAgent.namespaceId}/agents/${authorAgent.id}/deployments/${authorAgent.revision.id}/runtime/logs?source=gateway`,
+                                );
+                              } finally {
+                                await gateway.close();
+                              }
+                            },
+                          );
+                        },
+                      );
+                    },
+                  ],
+                  [
                     "model-ui",
                     async (agent, step) => {
                       await step(

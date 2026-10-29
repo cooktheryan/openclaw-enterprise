@@ -565,7 +565,7 @@ export const occApiRoutes = [
     iamAction: "administer",
     resourceKind: "installation",
     authorizationTarget: "namespace_iam",
-    summary: "Create an immutable Namespace IAM Role",
+    summary: "Create an immutable Namespace IAM Role or managed Agent Author preset",
     tags: ["IAM"],
     schema: {
       querystring: EmptyQuery,
@@ -630,7 +630,7 @@ export const occApiRoutes = [
     iamAction: "administer",
     resourceKind: "installation",
     authorizationTarget: "namespace_iam",
-    summary: "Create an immutable exact-resource Namespace IAM AccessBinding",
+    summary: "Create an exact-resource binding or managed Agent Author Namespace binding",
     tags: ["IAM"],
     schema: {
       querystring: EmptyQuery,

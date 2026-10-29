@@ -1826,6 +1826,7 @@ Report advisory primary IAM permissions on a readable Namespace, not authorizati
 | --- | --- | --- | --- |
 | `data` | `object` | Yes | — |
 | `data.agents` | `object` | Yes | — |
+| `data.agents.agentAuthor` | `boolean` | Yes | Whether the Agent Author Role contributes to Agent creation in this Namespace now. When true, OCC creates exact credential grants for the Agent ServicePrincipal in the Agent mutation transaction. Advisory only: Restrictions or a later authorization decision can still prevent the operation. |
 | `data.agents.create` | `boolean` | Yes | Whether the selected IAM Driver allows Agent creation in this Namespace now. Advisory only: other required permissions, lifecycle state, or a later authorization decision can still prevent the operation. |
 | `data.delete` | `boolean` | Yes | Whether the selected IAM Driver allows deletion of this exact Namespace now. Advisory only: remaining resources, required Preset deletion permissions, or a later authorization decision can still prevent deletion. |
 | `data.installation` | `object` | Yes | — |
@@ -3585,6 +3586,7 @@ Report advisory primary IAM permissions on a readable Agent, not authorization f
 | --- | --- | --- | --- |
 | `data` | `object` | Yes | — |
 | `data.administer` | `boolean` | Yes | Whether the selected IAM Driver allows Agent administer now, which native admin UI access needs. Advisory only: other required permissions (native admin UI also needs a signed-in console session), lifecycle state, or a later authorization decision can still prevent the operation. |
+| `data.agentAuthor` | `boolean` | Yes | Whether the managed Agent Author Role contributes to update access for this Agent. When true, OCC reconciles exact credential grants for this Agent's ServicePrincipal during Agent and Configuration updates. |
 | `data.agentSourcesOperate` | `boolean` | Yes | Whether the selected IAM Driver allows, now, the source grants that each Agent update checks: Secret operate on every Secret that the Agent's Configuration binds and on a Secret Harness authentication source, credential source operate on every credential source the Agent lists or uses for Harness authentication, and ServiceAccount read on a ServiceAccount Harness authentication source. `true` when the Agent and its Configuration bind no source. Reported only to a caller with Agent update and Configuration read whose Agent settings are readable; otherwise `false`. Advisory only: other required permissions, lifecycle state, sources that an update adds, or a later authorization decision can still prevent the operation. |
 | `data.configurationRead` | `boolean` | Yes | Whether the selected IAM Driver allows read of the Agent's Configuration now, which each Agent update needs. Advisory only: other required permissions, lifecycle state, or a later authorization decision can still prevent the operation. |
 | `data.configurationSecretsOperate` | `boolean` | Yes | Whether the selected IAM Driver allows Secret operate now on every Secret that the Agent's Configuration binds. Each Configuration save needs it for the Secrets it binds: the Secrets in its `secretBindings`, or every bound Secret when it omits them. `true` when the Configuration binds no Secret. Reported only to a caller with Configuration read and update; otherwise `false`. Advisory only: other required permissions, lifecycle state, or a later authorization decision can still prevent the operation. |
@@ -5984,11 +5986,11 @@ Force the Credential Refresh Driver to mint a new token for a refresh-type sourc
 | Operation | Summary |
 | --- | --- |
 | [`GET /namespaces/{namespaceId}/iam/access-bindings`](#get-namespacesnamespaceidiamaccessbindings) | List exact Namespace IAM AccessBindings |
-| [`POST /namespaces/{namespaceId}/iam/access-bindings`](#post-namespacesnamespaceidiamaccessbindings) | Create an immutable exact-resource Namespace IAM AccessBinding |
+| [`POST /namespaces/{namespaceId}/iam/access-bindings`](#post-namespacesnamespaceidiamaccessbindings) | Create an exact-resource binding or managed Agent Author Namespace binding |
 | [`DELETE /namespaces/{namespaceId}/iam/access-bindings/{bindingId}`](#delete-namespacesnamespaceidiamaccessbindingsbindingid) | Delete one exact Namespace IAM AccessBinding |
 | [`GET /namespaces/{namespaceId}/iam/access-bindings/{bindingId}`](#get-namespacesnamespaceidiamaccessbindingsbindingid) | Get an exact Namespace IAM AccessBinding |
 | [`GET /namespaces/{namespaceId}/iam/roles`](#get-namespacesnamespaceidiamroles) | List exact Namespace IAM Roles |
-| [`POST /namespaces/{namespaceId}/iam/roles`](#post-namespacesnamespaceidiamroles) | Create an immutable Namespace IAM Role |
+| [`POST /namespaces/{namespaceId}/iam/roles`](#post-namespacesnamespaceidiamroles) | Create an immutable Namespace IAM Role or managed Agent Author preset |
 | [`DELETE /namespaces/{namespaceId}/iam/roles/{roleId}`](#delete-namespacesnamespaceidiamrolesroleid) | Delete an unreferenced exact Namespace IAM Role |
 | [`GET /namespaces/{namespaceId}/iam/roles/{roleId}`](#get-namespacesnamespaceidiamrolesroleid) | Get an exact Namespace IAM Role |
 | [`GET /namespaces/{namespaceId}/iam/service-principals`](#get-namespacesnamespaceidiamserviceprincipals) | List the Namespace's non-Agent ServicePrincipals |
@@ -6040,7 +6042,7 @@ List exact Namespace IAM AccessBindings
 
 <span id="post-namespacesnamespaceidiamaccessbindings"></span>
 
-Create an immutable exact-resource Namespace IAM AccessBinding
+Create an exact-resource binding or managed Agent Author Namespace binding
 
 **Operation ID:** `createIAMAccessBinding`
 
@@ -6071,13 +6073,7 @@ Create an immutable exact-resource Namespace IAM AccessBinding
 
 **Content type:** `application/json`
 
-| Field | Type | Required | Constraints |
-| --- | --- | --- | --- |
-| `resourceId` | `string` | Yes | min length: 1; max length: 200 |
-| `resourceKind` | `"namespace" or "agent" or "agent_revision" or "configuration" or "credential_source" or "sandbox_policy" or "preset" or "secret" or "service_account"` | Yes | — |
-| `roleId` | `string` | Yes | min length: 1; max length: 200 |
-| `subjectId` | `string` | Yes | min length: 1; max length: 200 |
-| `subjectKind` | `"identity"` | Yes | — |
+Schema: `object or object`.
 
 ##### Responses
 
@@ -6230,7 +6226,7 @@ List exact Namespace IAM Roles
 
 <span id="post-namespacesnamespaceidiamroles"></span>
 
-Create an immutable Namespace IAM Role
+Create an immutable Namespace IAM Role or managed Agent Author preset
 
 **Operation ID:** `createIAMRole`
 
@@ -6253,12 +6249,7 @@ Create an immutable Namespace IAM Role
 
 **Content type:** `application/json`
 
-| Field | Type | Required | Constraints |
-| --- | --- | --- | --- |
-| `name` | `string` | No | min length: 1; max length: 200; pattern: `^(?!\s)(?!.*\s$)[^\u0000-\u001f\u007f-\u009f\u2028\u2029]+$` |
-| `permissions` | `array<object>` | Yes | min items: 1; max items: 64 |
-| `permissions[].action` | `"create" or "read" or "update" or "delete" or "deploy" or "operate" or "administer" or "read_logs" or "manage_policy"` | Yes | — |
-| `permissions[].resourceKind` | `"namespace" or "agent" or "agent_revision" or "configuration" or "credential_source" or "sandbox_policy" or "preset" or "secret" or "service_account"` | Yes | — |
+Schema: `object or object`.
 
 ##### Responses
 

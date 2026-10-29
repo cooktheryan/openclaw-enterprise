@@ -165,6 +165,101 @@ test("console collection APIs keep exact Namespace and Agent IAM boundaries", as
   );
 });
 
+test("the managed Agent Author Role grants one human Namespace access and exact Agent credentials", async (t) => {
+  const fixture = await createConsoleAppFixture(t, { provisionedPeople: [] });
+  await fixture.bootstrap();
+  const namespace = await fixture.createNamespace("Agent Author namespace", { ready: true });
+  const otherNamespace = await fixture.createNamespace("Other namespace", { ready: true });
+  const secret = await fixture.createSecret(namespace.id, "Selected model key", "synthetic-key");
+  const unrelatedSecret = await fixture.createSecret(
+    namespace.id,
+    "Unrelated model key",
+    "synthetic-other-key",
+  );
+  const author = await fixture.createAccountWithPolicy("agent-author", () => {});
+  const iam = `/namespaces/${namespace.id}/iam`;
+  const role = await fixture.request("POST", `${iam}/roles`, {
+    body: { preset: "agent-author" },
+  });
+  assert.equal(role.status, 201, JSON.stringify(role.body));
+  const assignment = await fixture.request("POST", `${iam}/access-bindings`, {
+    body: {
+      subjectKind: "identity",
+      subjectId: author.principal.id,
+      roleId: role.data.id,
+      scope: "namespace",
+    },
+  });
+  assert.equal(assignment.status, 201, JSON.stringify(assignment.body));
+  assert.equal(assignment.data.resourceKind, undefined);
+  assert.equal(assignment.data.resourceId, undefined);
+
+  const session = await fixture.signIn(author.credentials);
+  const namespaces = await fixture.request("GET", "/namespaces", { session });
+  assert.equal(namespaces.status, 200);
+  assert.deepEqual(
+    namespaces.data.map(({ id }) => id),
+    [namespace.id],
+  );
+  assertApiError(await fixture.request("GET", "/installation", { session }), 403, "FORBIDDEN");
+  assertApiError(await fixture.request("GET", `${iam}/roles`, { session }), 403, "FORBIDDEN");
+  assertApiError(
+    await fixture.request("GET", `/namespaces/${otherNamespace.id}/agents`, { session }),
+    403,
+    "FORBIDDEN",
+  );
+
+  const configuration = await fixture.request(
+    "POST",
+    `/namespaces/${namespace.id}/configurations`,
+    {
+      session,
+      body: { kind: "agent", values: {} },
+    },
+  );
+  assert.equal(configuration.status, 201, JSON.stringify(configuration.body));
+  const created = await fixture.request("POST", `/namespaces/${namespace.id}/agents`, {
+    session,
+    body: {
+      name: "Managed Agent Author Agent",
+      configurationId: configuration.data.id,
+      harnessAuth: { method: "api_key", source: secret.ref },
+    },
+  });
+  assert.equal(created.status, 201, JSON.stringify(created.body));
+  const updated = await fixture.request(
+    "PATCH",
+    `/namespaces/${namespace.id}/agents/${created.data.id}`,
+    { session, body: { configurationId: configuration.data.id } },
+  );
+  assert.equal(updated.status, 200, JSON.stringify(updated.body));
+
+  const bindings = await fixture.request("GET", `${iam}/access-bindings`);
+  assert.equal(bindings.status, 200, JSON.stringify(bindings.body));
+  assert.equal(
+    bindings.data.filter((binding) => binding.subjectId === created.data.servicePrincipalId).length,
+    1,
+    "the Agent ServicePrincipal receives only the selected credential grant",
+  );
+  assert.ok(
+    bindings.data.some(
+      (binding) =>
+        binding.subjectId === created.data.servicePrincipalId &&
+        binding.resourceKind === "secret" &&
+        binding.resourceId === secret.id &&
+        binding.roleId === `role_${namespace.id}_agent_secret_operate`,
+    ),
+  );
+  assert.equal(
+    bindings.data.some(
+      (binding) =>
+        binding.subjectId === created.data.servicePrincipalId &&
+        binding.resourceId === unrelatedSecret.id,
+    ),
+    false,
+  );
+});
+
 // The Secrets page disables Create Secret on a false answer (finding 2365), so the answer must be
 // the decision createSecret makes: Secret create on the Namespace collection, not Secret read and
 // not Agent create. Each step proves the answer against the same real POST.
@@ -191,7 +286,7 @@ test("the Namespace Secret create answer matches what Secret creation checks", a
 
   assert.deepEqual(await answer(), {
     delete: false,
-    agents: { create: true },
+    agents: { create: true, agentAuthor: false },
     secrets: { create: false },
     installation: { administer: false },
   });
@@ -233,7 +328,7 @@ test("the Namespace Installation administer answer matches what Installation-wid
   ]);
   const session = await fixture.signIn(member.credentials);
   const memberAnswer = await answer(session);
-  assert.deepEqual(memberAnswer.agents, { create: true });
+  assert.deepEqual(memberAnswer.agents, { create: true, agentAuthor: false });
   assert.deepEqual(memberAnswer.installation, { administer: false });
   // A false answer is not an attempted operation: only the real read is audited as denied.
   assert.deepEqual(denials(), []);
@@ -248,7 +343,7 @@ test("the Namespace Installation administer answer matches what Installation-wid
   // it applies to the member too; her answer was read above.
   restrict(fixture.policy, "create", "agent", { namespaceId: namespace.id });
   const restricted = await answer();
-  assert.deepEqual(restricted.agents, { create: false });
+  assert.deepEqual(restricted.agents, { create: false, agentAuthor: false });
   assert.deepEqual(restricted.installation, { administer: true });
   assert.equal((await backends()).status, 200);
 
@@ -385,6 +480,7 @@ test("caller permission summaries report primary IAM decisions without authorizi
   assert.equal(admin.status, 200);
   assert.deepEqual(admin.data, {
     update: true,
+    agentAuthor: false,
     deploy: true,
     operate: true,
     delete: true,
@@ -401,7 +497,7 @@ test("caller permission summaries report primary IAM decisions without authorizi
   assert.equal(adminNamespace.status, 200);
   assert.deepEqual(adminNamespace.data, {
     delete: true,
-    agents: { create: true },
+    agents: { create: true, agentAuthor: false },
     secrets: { create: true },
     installation: { administer: true },
   });
@@ -427,6 +523,7 @@ test("caller permission summaries report primary IAM decisions without authorizi
   assert.equal(summary.status, 200);
   assert.deepEqual(summary.data, {
     update: false,
+    agentAuthor: false,
     deploy: true,
     operate: false,
     delete: false,
@@ -477,7 +574,7 @@ test("caller permission summaries report primary IAM decisions without authorizi
   assert.equal(namespaceSummary.status, 200);
   assert.deepEqual(namespaceSummary.data, {
     delete: false,
-    agents: { create: false },
+    agents: { create: false, agentAuthor: false },
     secrets: { create: false },
     installation: { administer: false },
   });
