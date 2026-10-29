@@ -447,7 +447,7 @@ export async function createQaBrowser(f, { themed, artifactsDirectory }) {
         const revision = await request(
           "POST",
           `/namespaces/${f.namespace.id}/agents/${agent.id}/deploy`,
-          {},
+          undefined,
           202,
         );
         await f.deployAndWait(agent, { revision });
@@ -494,7 +494,7 @@ export async function createQaBrowser(f, { themed, artifactsDirectory }) {
         const replacementRevision = await request(
           "POST",
           `/namespaces/${f.namespace.id}/agents/${agent.id}/deploy`,
-          {},
+          undefined,
           202,
         );
         await f.deployAndWait(agent, { revision: replacementRevision });
