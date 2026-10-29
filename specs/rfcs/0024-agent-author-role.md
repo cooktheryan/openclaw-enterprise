@@ -15,7 +15,7 @@ author: cooktheryan
 
 ## Summary
 
-Add an optional, fixed **Agent Author** Role. An Installation administrator can assign it to a human OCC Principal in one Namespace. That person can create and manage Agents through the existing OCC Console without Installation administration. No user receives the Role by default.
+Add an optional, fixed **Agent Author** Role. An Installation administrator can assign it to a human OCC Principal in one Namespace. That person can create and manage Agents through the existing OCC Console without Installation administration. No user receives the Role by default. This proposal extends the IAM Driver contract for human identity lookup and managed Namespace-scoped bindings.
 
 ## Problem
 
@@ -33,6 +33,7 @@ Kubernetes RoleBindings do not authorize OCC API requests. OCE Agents are not Ku
 ## Requirements
 
 - An Installation administrator can assign one managed Agent Author Role to a human OCC Principal in one Namespace. The assignment is optional and has no default.
+- Extend the IAM Driver contract to resolve a provisioned human by immutable `principalId` and persist a managed Namespace-scoped AccessBinding in the same platform transaction as its audit record. OCC uses that scope only for the fixed Agent Author Role; arbitrary Namespace-wide create Roles remain rejected. The selected Driver must support the operation or fail closed; OCC does not fall back to another Driver.
 - Only the managed Role can grant Namespace-wide `create` permissions. Existing custom Namespace Roles and exact-resource bindings retain their current limits.
 - The assigned person can create, read, update, delete, deploy, operate, and read logs for Agents in that Namespace; read Agent revisions; and create, read, update, and delete Configurations.
 - The assigned person can create, read, update, delete, and use Secrets and credential sources in that Namespace. Secret values remain undisclosed by permission checks and Console access summaries.
@@ -59,11 +60,11 @@ The Role is Namespace-wide rather than limited to resources created by its assig
 
 ## Decision requested
 
-Approve an optional, human-only Agent Author Role in the existing OCC Console. The decision must confirm that an assigned user may manage every matching existing and future resource in one Namespace, including every Secret there. The recommended scope is to accept this shared authority only for Namespaces where operators intend to delegate it.
+Approve an optional, human-only Agent Author Role in the existing OCC Console and the required IAM Driver contract extension. The decision must confirm that an assigned user may manage every matching existing and future resource in one Namespace, including every Secret there. The recommended scope is to accept this shared authority only for Namespaces where operators intend to delegate it.
 
 ## Verification requirements
 
-Qualification must show that no access is granted by default; assignment is limited to a human in one Namespace; cross-Namespace and restricted requests remain denied; the assigned person can complete the regular Agent lifecycle; Agent ServicePrincipals receive only exact credential grants; and revocation prevents later requests. Runtime qualification must use the supported Kubernetes Agent workflow. A development host is a validation environment only and must not require AWS-specific product behavior.
+Qualification must show that no access is granted by default; assignment is limited to a human in one Namespace; a selected Driver without the required lookup or transactional policy support fails without creating a binding or falling back; cross-Namespace and restricted requests remain denied; the assigned person can complete the regular Agent lifecycle; Agent ServicePrincipals receive only exact credential grants; and revocation prevents later requests. Runtime qualification must use the supported Kubernetes Agent workflow. A development host is a validation environment only and must not require AWS-specific product behavior.
 
 ## References
 
