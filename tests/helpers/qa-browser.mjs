@@ -554,7 +554,7 @@ export async function createQaBrowser(f, { themed, artifactsDirectory }) {
           "revoked requests must not create or alter credential grants",
         );
 
-        await f.api("POST", `/namespaces/${f.namespace.id}/agents/${agent.id}/stop`, {});
+        await f.api("POST", `/namespaces/${f.namespace.id}/agents/${agent.id}/stop`);
         await f.api("DELETE", `/namespaces/${f.namespace.id}/agents/${agent.id}`, undefined);
         await f.waitFor("Agent Author Agent deletion", async () => {
           const agents = await f.api("GET", `/namespaces/${f.namespace.id}/agents`);
