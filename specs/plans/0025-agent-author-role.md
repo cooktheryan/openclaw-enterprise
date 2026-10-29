@@ -1,18 +1,18 @@
 ---
-rfc: ../rfcs/0024-agent-author-role.md
+rfc: ../rfcs/0025-agent-author-role.md
 ---
 
 # Implementation plan: Optional Namespace Agent author role
 
-- **ID:** RFC-0024
+- **ID:** RFC-0025
 - **Delivery status:** In progress
 - **Owner:** OpenClaw Enterprise IAM
-- **Authority:** [RFC-0024](../rfcs/0024-agent-author-role.md)
+- **Authority:** [RFC-0025](../rfcs/0025-agent-author-role.md)
 - **Source baseline:** `ddbec473f0d0f906c71677ea8c95b63f8d59de86`
 
 ## Outcome and scope
 
-An Installation administrator can assign the managed Agent Author Role to a human Principal in one Namespace. That user can sign in to the existing OCC Console and create and manage Agents and the selected supporting resources in that Namespace without Installation administration. No user receives the Role by default. This MVP uses the current editable Configuration workflow; template-only enforcement needs a separate server-side contract. The Role's exact permissions and limits are defined by [RFC-0024](../rfcs/0024-agent-author-role.md).
+An Installation administrator can assign the managed Agent Author Role to a human Principal in one Namespace. That user can sign in to the existing OCC Console and create and manage Agents and the selected supporting resources in that Namespace without Installation administration. No user receives the Role by default. This MVP uses the current editable Configuration workflow; template-only enforcement needs a separate server-side contract. The Role's exact permissions and limits are defined by [RFC-0025](../rfcs/0025-agent-author-role.md).
 
 ## Contract and source touchpoints
 
@@ -24,7 +24,7 @@ Generated grants use a stable ID derived from the Agent, resource kind, and sour
 
 ## Implementation
 
-1. Submit RFC-0024 before the first implementation change. Extend IAM Driver inputs for immutable human Principal lookup and managed Namespace-scoped AccessBindings. Add the managed Role and Namespace-binding inputs to the API and CLI. Restrict Namespace-wide assignment to the managed preset and verified human Principals; keep arbitrary custom Roles and Groups on the current exact-resource contract. Keep administrator authorization, transaction guards, and mutation audit intact.
+1. Submit RFC-0025 before the first implementation change. Extend IAM Driver inputs for immutable human Principal lookup and managed Namespace-scoped AccessBindings. Add the managed Role and Namespace-binding inputs to the API and CLI. Restrict Namespace-wide assignment to the managed preset and verified human Principals; keep arbitrary custom Roles and Groups on the current exact-resource contract. Keep administrator authorization, transaction guards, and mutation audit intact.
 2. Apply the RFC's fixed permission set through the selected IAM Driver. Preserve default deny and Restriction precedence. During Agent create, Agent update, and Configuration update, verify the author's permission on each bound credential and transactionally reconcile exact `operate` grants for that Agent ServicePrincipal; remove only these generated bindings when no longer needed. Preserve existing generated binding IDs and independently managed administrator bindings. Reauthorize after acquiring the Namespace lock so a mutation that waits behind role revocation cannot use stale role evidence to create grants. Hold and recheck the assigning session through resource writes, credential grants, and audit commit. Fail closed when the selected Driver cannot participate in the policy transaction.
 3. Extend the regular Agent workflow integration for an assigned user. Add policy cases for no binding, cross-Namespace requests, unsupported custom Namespace grants, account/service-account limits, source grant isolation, revocation, and transactional failure. Register any new workflow in the QA matrix and CI selection as required. Update authorization, the permissions cheat sheet, the IAM and Agent flows, operator/user guidance, and API/CLI references. Keep the feature cloud-neutral.
 4. After local proof passes, run the same create/configure/deploy/stop/log/delete scenario against the configured disposable `oce-demo` AWS host. Use it only as a Kubernetes validation environment; add no AWS IAM policy, product behavior, or application settings. Close demo resources, stop the instance after validation, and record exact proof limits.
