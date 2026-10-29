@@ -6,13 +6,14 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 import { createServer } from "node:tls";
 import { chromium } from "playwright";
+import { recordWalkthrough } from "../../scripts/console/record-walkthrough.ts";
 import { prepareQaConsoleTheme } from "./qa-installation.mjs";
 import { waitFor } from "./qa-utils.mjs";
 import { submitChatTurnWithAssistantProof, waitForStockUi } from "./native-ui-chat.mjs";
 import { renderPresetTemplate } from "../../packages/contracts/src/index.ts";
 import { protectedText } from "./qa-secrets.mjs";
 
-export async function createQaBrowser(f, { themed }) {
+export async function createQaBrowser(f, { themed, artifactsDirectory }) {
   if (themed) {
     await prepareQaConsoleTheme(f);
   }
@@ -182,6 +183,10 @@ export async function createQaBrowser(f, { themed }) {
           `/namespaces/${f.namespace.id}/configurations`,
           { kind: "agent", values: {} },
         );
+        const deniedBindingsBefore = await f.api(
+          "GET",
+          `/namespaces/${f.namespace.id}/iam/access-bindings`,
+        );
         await request(
           "POST",
           `/namespaces/${f.namespace.id}/agents`,
@@ -189,8 +194,21 @@ export async function createQaBrowser(f, { themed }) {
             name: `qa-unassigned-${nameLabel}`,
             configurationId: deniedConfiguration.id,
             executionMode: "embedded",
+            harnessAuth: {
+              method: "api_key",
+              source: {
+                kind: "secret",
+                namespaceId: f.namespace.id,
+                id: `sec_${randomUUID()}`,
+              },
+            },
           },
           403,
+        );
+        assert.deepEqual(
+          await f.api("GET", `/namespaces/${f.namespace.id}/iam/access-bindings`),
+          deniedBindingsBefore,
+          "an unassigned create denial must not create credential grants",
         );
         const authorRole = await f.api("POST", `/namespaces/${f.namespace.id}/iam/roles`, {
           preset: "agent-author",
@@ -205,12 +223,54 @@ export async function createQaBrowser(f, { themed }) {
         assert.equal(binding.resourceKind, undefined);
         assert.equal(binding.resourceId, undefined);
 
+        const otherNamespace = await f.api("POST", "/namespaces", {
+          name: `qa-agent-author-cross-${nameLabel}`,
+        });
+        await f.waitFor("second Namespace readiness for cross-Namespace denial", async () => {
+          const current = await f.api("GET", `/namespaces/${otherNamespace.id}`);
+          return current.status === "ready" ? current : undefined;
+        });
+
         assert.deepEqual(
           (await request("GET", "/namespaces")).map(({ id }) => id),
           [f.namespace.id],
         );
         await request("GET", "/installation", undefined, 403);
         await request("GET", `/namespaces/${f.namespace.id}/iam/roles`, undefined, 403);
+        const beforeCrossNamespace = await f.api(
+          "GET",
+          `/namespaces/${f.namespace.id}/iam/access-bindings`,
+        );
+        await request(
+          "POST",
+          `/namespaces/${otherNamespace.id}/agents`,
+          {
+            name: `qa-cross-namespace-${nameLabel}`,
+            configurationId: deniedConfiguration.id,
+            harnessAuth: {
+              method: "api_key",
+              source: {
+                kind: "secret",
+                namespaceId: f.namespace.id,
+                id: `sec_${randomUUID()}`,
+              },
+            },
+          },
+          403,
+        );
+        await request("GET", `/namespaces/${otherNamespace.id}/secrets`, undefined, 403);
+        assert.equal(
+          (await f.api("GET", `/namespaces/${otherNamespace.id}/agents`)).some(
+            ({ name }) => name === `qa-cross-namespace-${nameLabel}`,
+          ),
+          false,
+          "a cross-Namespace denial must not persist the Agent",
+        );
+        assert.deepEqual(
+          await f.api("GET", `/namespaces/${f.namespace.id}/iam/access-bindings`),
+          beforeCrossNamespace,
+          "cross-Namespace denials must not create credential grants",
+        );
 
         const selected = (await request("GET", `/namespaces/${f.namespace.id}/presets`)).find(
           ({ name }) => name === `Standard ${presetName}`,
@@ -249,6 +309,112 @@ export async function createQaBrowser(f, { themed }) {
           method: codex ? "codex_pat" : "api_key",
           source: { kind: "secret", namespaceId: f.namespace.id, id: secret.id },
         };
+
+        const restrictionId = `qa-agent-author-${randomUUID()}`;
+        // Restrictions have no public creation route; seed one policy row, then exercise its
+        // decision through the real signed-in API before the row is removed.
+        await f.database(
+          `INSERT INTO occ.iam_restrictions
+             (id, namespace_id, action, resource_kind, resource_id, effect)
+           VALUES (:'id', :'namespace_id', 'create', 'agent', NULL, 'deny')`,
+          { id: restrictionId, namespace_id: f.namespace.id },
+        );
+        const beforeRestrictedCreate = await f.api(
+          "GET",
+          `/namespaces/${f.namespace.id}/iam/access-bindings`,
+        );
+        try {
+          await request(
+            "POST",
+            `/namespaces/${f.namespace.id}/agents`,
+            {
+              ...rendered.agent,
+              configurationId: deniedConfiguration.id,
+              harnessAuth: {
+                ...harnessAuth,
+                source: { ...harnessAuth.source, id: `sec_${randomUUID()}` },
+              },
+            },
+            403,
+          );
+          assert.deepEqual(
+            await f.api("GET", `/namespaces/${f.namespace.id}/iam/access-bindings`),
+            beforeRestrictedCreate,
+            "a Restriction denial must happen before credential grants are written",
+          );
+          assert.equal(
+            (await f.api("GET", `/namespaces/${f.namespace.id}/agents`)).some(
+              ({ name }) => name === rendered.agent.name,
+            ),
+            false,
+            "a Restriction denial must not persist the Agent",
+          );
+        } finally {
+          await f.database("DELETE FROM occ.iam_restrictions WHERE id = :'id'", {
+            id: restrictionId,
+          });
+        }
+
+        const createAgentUrl = `${f.consoleUrl}/console/agents/new?namespace=${f.namespace.id}`;
+        await authorPage.goto(`${f.consoleUrl}/console/?namespace=${f.namespace.id}`);
+        const agentsHeading = authorPage.getByRole("heading", { name: "Agents", exact: true });
+        await agentsHeading.waitFor();
+        await authorPage.goto(createAgentUrl);
+        const createHeading = authorPage.getByRole("heading", {
+          name: "Create Agent",
+          exact: true,
+        });
+        await createHeading.waitFor();
+        const mediaPrefix = `${f.controlPlane}-${presetName.toLowerCase()}-${f.suffix}-agent-author`;
+        await authorPage.screenshot({
+          path: join(artifactsDirectory, `${mediaPrefix}-before.png`),
+        });
+        const defaultPreset = authorPage.getByRole("button", {
+          name: "Start with default Preset",
+          exact: true,
+        });
+        const modelSecret = authorPage.getByLabel(
+          codex ? "Service account token Secret" : "API key Secret",
+          { exact: true },
+        );
+        await authorPage.goto(`${f.consoleUrl}/console/?namespace=${f.namespace.id}`);
+        await agentsHeading.waitFor();
+        const createAgent = authorPage.getByRole("button", {
+          name: "Create Agent",
+          exact: true,
+        });
+        await recordWalkthrough(authorPage, {
+          outputPath: join(artifactsDirectory, `${mediaPrefix}-credential-access.webm`),
+          ready: () => agentsHeading.waitFor(),
+          steps: [
+            {
+              target: createAgent,
+              action: () => createAgent.click(),
+              verify: () => createHeading.waitFor(),
+            },
+            {
+              target: defaultPreset,
+              action: () => defaultPreset.click(),
+              verify: () => modelSecret.waitFor({ state: "visible" }),
+            },
+            {
+              target: modelSecret,
+              action: async () => {
+                await modelSecret.fill(secret.name);
+                await authorPage.getByRole("option", { name: secret.name, exact: true }).click();
+              },
+              verify: async () => {
+                assert.equal(await modelSecret.inputValue(), secret.name);
+                await authorPage
+                  .getByText("Secret selected. Create Agent binds it.", { exact: true })
+                  .waitFor({ state: "visible" });
+              },
+            },
+          ],
+        });
+        await authorPage.screenshot({
+          path: join(artifactsDirectory, `${mediaPrefix}-after.png`),
+        });
         const agent = await request(
           "POST",
           `/namespaces/${f.namespace.id}/agents`,
@@ -306,8 +472,90 @@ export async function createQaBrowser(f, { themed }) {
           "the Agent ServicePrincipal must not receive unrelated Secret grants",
         );
         await verify(agent, request);
-        await request("POST", `/namespaces/${f.namespace.id}/agents/${agent.id}/stop`, {});
-        await request("DELETE", `/namespaces/${f.namespace.id}/agents/${agent.id}`, undefined, 202);
+
+        const replacementSecret = await request(
+          "POST",
+          `/namespaces/${f.namespace.id}/secrets`,
+          { name: `${rendered.agent.name}-model-replacement`, value: credential },
+          201,
+        );
+        const replacement = await request(
+          "PATCH",
+          `/namespaces/${f.namespace.id}/agents/${agent.id}`,
+          {
+            configurationId: configuration.id,
+            harnessAuth: {
+              ...harnessAuth,
+              source: { ...harnessAuth.source, id: replacementSecret.id },
+            },
+          },
+        );
+        assert.equal(replacement.id, agent.id, "Agent Author can replace model credentials");
+        const replacementRevision = await request(
+          "POST",
+          `/namespaces/${f.namespace.id}/agents/${agent.id}/deploy`,
+          {},
+          202,
+        );
+        await f.deployAndWait(agent, { revision: replacementRevision });
+        // Activation of the replacement is the cleanup boundary for the old exact Secret grant.
+        const replacementBindings = await f.api(
+          "GET",
+          `/namespaces/${f.namespace.id}/iam/access-bindings`,
+        );
+        assert.ok(
+          replacementBindings.some(
+            (candidate) =>
+              candidate.subjectId === agent.servicePrincipalId &&
+              candidate.resourceKind === "secret" &&
+              candidate.resourceId === replacementSecret.id,
+          ),
+          "the active replacement must retain only its exact model Secret grant",
+        );
+        assert.equal(
+          replacementBindings.some(
+            (candidate) =>
+              candidate.subjectId === agent.servicePrincipalId &&
+              candidate.resourceKind === "secret" &&
+              candidate.resourceId === secret.id,
+          ),
+          false,
+          "activation cleanup must remove the previous model Secret grant",
+        );
+        await verify(agent, request);
+
+        // Revocation denies later human requests; the administrator still owns test cleanup.
+        await f.api("DELETE", `/namespaces/${f.namespace.id}/iam/access-bindings/${binding.id}`);
+        const beforeRevokedRequests = await f.api(
+          "GET",
+          `/namespaces/${f.namespace.id}/iam/access-bindings`,
+        );
+        await request(
+          "PATCH",
+          `/namespaces/${f.namespace.id}/agents/${agent.id}`,
+          {
+            configurationId: configuration.id,
+            harnessAuth: {
+              ...harnessAuth,
+              source: { ...harnessAuth.source, id: `sec_${randomUUID()}` },
+            },
+          },
+          403,
+        );
+        await request(
+          "GET",
+          `/namespaces/${f.namespace.id}/secrets/sec_${randomUUID()}`,
+          undefined,
+          403,
+        );
+        assert.deepEqual(
+          await f.api("GET", `/namespaces/${f.namespace.id}/iam/access-bindings`),
+          beforeRevokedRequests,
+          "revoked requests must not create or alter credential grants",
+        );
+
+        await f.api("POST", `/namespaces/${f.namespace.id}/agents/${agent.id}/stop`, {});
+        await f.api("DELETE", `/namespaces/${f.namespace.id}/agents/${agent.id}`, undefined);
         await f.waitFor("Agent Author Agent deletion", async () => {
           const agents = await f.api("GET", `/namespaces/${f.namespace.id}/agents`);
           return !agents.some(({ id }) => id === agent.id);
@@ -319,9 +567,15 @@ export async function createQaBrowser(f, { themed }) {
           agentId: agent.id,
           revisionId: revision.id,
           explicitRoleAssignment: true,
+          unassignedCreateDeniedBeforeCredentialLookup: true,
+          crossNamespaceCreateAndSecretReadDenied: true,
+          restrictionDeniedBeforeCredentialLookup: true,
           installationAccessDenied: true,
           iamEditingDenied: true,
           exactCredentialGrant: true,
+          replacementActivated: true,
+          previousCredentialGrantCleanedAfterActivation: true,
+          revokedCredentialAccessDenied: true,
           createdUpdatedDeployedStoppedDeleted: true,
         });
       } finally {

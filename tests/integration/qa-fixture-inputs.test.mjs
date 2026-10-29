@@ -186,12 +186,7 @@ test("QA selection keeps prerequisite credentials and reports omitted coverage",
     "git-push-denied",
     "slack",
   ]);
-  assert.deepEqual(selected.cells[0].notApplicable, [
-    "agent-author",
-    "calendar",
-    "git-push-denied",
-    "slack",
-  ]);
+  assert.deepEqual(selected.cells[0].notApplicable, ["calendar", "git-push-denied", "slack"]);
   assert.throws(() => validateQaInputs(selected, {}), /OPENAI_KEY_FILE is required/);
   assert.throws(
     () => selectQaMatrix({ OCC_TEST_QA_SCENARIOS: "model-ui,typo" }),
@@ -209,8 +204,20 @@ test("QA selection keeps prerequisite credentials and reports omitted coverage",
   assert.ok(!calendar.requiredEnv.includes("OCC_TEST_QA_OPENAI_KEY_FILE"));
   assert.deepEqual(calendar.cells[0].scenarios, []);
   const openclaw = selectQaMatrix({ OCC_TEST_QA_PRESET: "OpenClaw" });
-  assert.deepEqual(openclaw.cells[0].scenarios, ["model-ui", "console-secrets", "git-write"]);
+  assert.deepEqual(openclaw.cells[0].scenarios, [
+    "model-ui",
+    "console-secrets",
+    "agent-author",
+    "git-write",
+  ]);
   assert.ok(!openclaw.requiredEnv.some((name) => /CODEX|SLACK|CALENDAR/.test(name)));
+  const openclawAgentAuthor = selectQaMatrix({
+    OCC_TEST_QA_INSTALLATION: "kubernetes",
+    OCC_TEST_QA_PRESET: "OpenClaw",
+    OCC_TEST_QA_SCENARIOS: "agent-author",
+  });
+  assert.deepEqual(openclawAgentAuthor.cells[0].scenarios, ["agent-author"]);
+  assert.deepEqual(openclawAgentAuthor.requiredEnv, ["OCC_TEST_QA_OPENAI_KEY_FILE"]);
   const secrets = selectQaMatrix({
     OCC_TEST_QA_SCENARIOS: "console-secrets",
     OCC_TEST_QA_PRESET: "Codex",

@@ -475,6 +475,44 @@ export async function createQaInstallation(
         ...args,
       ]);
     },
+    async database(sql, variables = {}) {
+      const values = Object.entries(variables).flatMap(([name, value]) => {
+        if (!/^[a-z_]+$/.test(name) || typeof value !== "string") {
+          throw new Error("Invalid QA database input.");
+        }
+        return ["--set", `${name}=${value}`];
+      });
+      return f.run(
+        "kubectl",
+        [
+          "--kubeconfig",
+          join(stateDirectory, "kubeconfig"),
+          "--context",
+          `k3d-${cluster}`,
+          "-n",
+          f.state.platformNamespace,
+          "exec",
+          "-i",
+          "statefulset/postgres",
+          "-c",
+          "postgres",
+          "--",
+          "psql",
+          "-X",
+          "-q",
+          "-t",
+          "-A",
+          "--set",
+          "ON_ERROR_STOP=1",
+          ...values,
+          "--username",
+          "postgres",
+          "--dbname",
+          "openclaw_enterprise",
+        ],
+        { input: sql },
+      );
+    },
     async get(kind, name, namespace) {
       return f.resource(kind, name, namespace);
     },

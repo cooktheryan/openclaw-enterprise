@@ -92,6 +92,7 @@ test(
               () =>
                 createQaBrowser(f, {
                   themed: cells.some((cell) => cell.scenarios.includes("model-ui")),
+                  artifactsDirectory: artifacts,
                 }),
             );
           }
@@ -189,10 +190,16 @@ test(
                                   gatewayUrl: gateway.url,
                                   gatewayPassword: gateway.gatewayPassword,
                                   nonce,
+                                  // The selected preset determines the credential type that the
+                                  // runtime uses; do not pass an OpenAI API key as a Codex token.
                                   secrets: [
                                     await protectedText(
-                                      process.env.OCC_TEST_QA_CODEX_TOKEN_FILE,
-                                      "Codex service-account credential",
+                                      process.env[
+                                        preset === "Codex"
+                                          ? "OCC_TEST_QA_CODEX_TOKEN_FILE"
+                                          : "OCC_TEST_QA_OPENAI_KEY_FILE"
+                                      ],
+                                      "Agent model credential",
                                     ),
                                   ],
                                 });

@@ -4,7 +4,7 @@ const scenarioPresets = {
   "sandbox-policy": ["Codex"],
   "model-ui": ["OpenClaw", "Codex"],
   "console-secrets": ["OpenClaw", "Codex"],
-  "agent-author": ["Codex"],
+  "agent-author": ["OpenClaw", "Codex"],
   calendar: ["Codex"],
   "git-write": ["OpenClaw", "Codex"],
   "git-push-denied": ["Codex"],
