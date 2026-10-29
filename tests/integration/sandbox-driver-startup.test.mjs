@@ -873,6 +873,16 @@ test("OpenShell refuses dedicated OpenClaw on settings its workspace preparation
     const options = sandboxInstallation().drivers.sandbox.configuration;
     settings(options);
     const driver = openShellDriver(workspaceGatewayClient(), options);
+    assert.deepEqual(driver.supportsHarnessExecutionMode.openclaw, {
+      embedded: { supported: false },
+      dedicated:
+        message === undefined ? { supported: true } : { supported: false, reason: message },
+    });
+    assert.throws(() => {
+      driver.supportsHarnessExecutionMode.openclaw.dedicated.supported = false;
+    }, TypeError);
+    // A caller's later mutation cannot change the constructed Driver's support decision.
+    options.kubernetes.userNamespaces = !options.kubernetes.userNamespaces;
     if (message === undefined) {
       assert.ok(driver.configureAgent(configuration, harness("openclaw")));
     } else {
@@ -2724,8 +2734,8 @@ test("OpenShell provisions dedicated Codex with bearer passthrough and provider 
   // when an operator chooses a path other than the development default.
   options.kubernetes.sandboxDataMount.mountPath = "/sandbox/custom-workspace";
   const driver = openShellDriver(gatewayClient, options);
-  // Same-cluster Compute with the in-cluster Envoy route hostname the k3d OpenShell
-  // profile uses; the node's setup URL is the one Compute derives for that route.
+  // Exercise Sandbox delivery with a supported scoped node URL on the in-cluster
+  // Envoy hostname used by the k3d profile. Live first-Agent proof covers enrollment.
   const routeHost = "occ-gateway-0123456789ab.envoy-gateway-system.svc.cluster.local";
   const computeOptions = conformanceKubernetesOptions({
     gatewayTrustedProxyCidrs: ["127.0.0.1/32"],
@@ -2747,12 +2757,7 @@ test("OpenShell provisions dedicated Codex with bearer passthrough and provider 
   );
   const { context, revision, requirements, runtimeManifest, codexConfig, nodeSetup } =
     runtimeSandboxFixture(driver, {
-      nodeSetupUrl: (target, { namespace }) =>
-        compute.workspaceNodeConnectionUrl(
-          target,
-          { name: namespace.name, plane: "execution" },
-          compute.getGatewayEndpoint(target),
-        ),
+      nodeSetupUrl: (target) => `${compute.getGatewayEndpoint(target)}/node`,
     });
   // Account fields are opaque claims, even when their text resembles a Harness path.
   const account = {

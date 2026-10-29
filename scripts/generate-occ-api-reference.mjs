@@ -181,8 +181,16 @@ function schemaRows(schema, document, parent = "") {
   return rows;
 }
 
-function schemaTable(schema, document) {
+function schemaTable(schema, document, { alternatives = false } = {}) {
   const resolvedSchema = resolveSchema(schema, document);
+  if (alternatives && resolvedSchema.anyOf) {
+    return resolvedSchema.anyOf
+      .map(
+        (alternative, index) =>
+          `**Alternative ${index + 1}:**\n\n${schemaTable(alternative, document, { alternatives: true })}`,
+      )
+      .join("\n\n");
+  }
   const rows = schemaRows(resolvedSchema, document);
   if (rows.length === 0) {
     return `Schema: \`${schemaType(schema, document)}\`.`;
@@ -202,6 +210,7 @@ const permissionScopeQualifiers = {
   provisioning_work: " (once created)",
   gateway_managed_mode_disabled: " (when `gatewayManagedMode` is `false`)",
   gateway_managed_mode_changed: " (when the request changes `gatewayManagedMode`)",
+  saved_sandbox_policy_additions: " (when saved network policy additions exist)",
 };
 
 function operationReference(path, method, operation, document, { headingLevel = 2 } = {}) {
@@ -254,7 +263,10 @@ function operationReference(path, method, operation, document, { headingLevel = 
     );
 
     for (const [contentType, content] of Object.entries(operation.requestBody.content ?? {})) {
-      sections.push(`**Content type:** \`${contentType}\``, schemaTable(content.schema, document));
+      sections.push(
+        `**Content type:** \`${contentType}\``,
+        schemaTable(content.schema, document, { alternatives: true }),
+      );
     }
   }
 

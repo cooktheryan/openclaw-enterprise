@@ -1,6 +1,6 @@
-import { retainedAgentCredentialRevisions } from "./agent-credential-revisions.ts";
+import { retainedAgentCredentialRevisions } from "./ports/agent-credential-revisions.ts";
 
-export { retainedAgentCredentialRevisions } from "./agent-credential-revisions.ts";
+export { retainedAgentCredentialRevisions } from "./ports/agent-credential-revisions.ts";
 import { NativeIAMDriver } from "@openclaw-enterprise/iam";
 import { isReducedCredentialPlan } from "./credential-policy-reduction.ts";
 
@@ -698,6 +698,7 @@ export {
 } from "./state/postgres-work-queue.ts";
 export {
   CREDENTIAL_WITHDRAWAL_TARGET,
+  controllerWorkDeploymentStatus,
   credentialWithdrawalWorkKey,
   isCredentialWithdrawalWork,
   revisionAdmittedBeforeWork,
@@ -1569,6 +1570,22 @@ function requireSandboxExecutionMode(
   }
 }
 
+function requireSandboxOpenClawMode(
+  sandbox: SandboxDriver | undefined,
+  executionMode: HarnessExecutionMode,
+): void {
+  if (sandbox === undefined) {
+    return;
+  }
+  const support = sandbox.supportsHarnessExecutionMode.openclaw[executionMode];
+  if (!support.supported) {
+    throw new ConfigurationHarnessError(
+      support.reason ??
+        `The selected Sandbox Driver does not support ${executionMode} OpenClaw execution. Select a supported Harness or ask an operator to change the Sandbox Driver.`,
+    );
+  }
+}
+
 /**
  * The Installation's approved Harness for the Configuration's runtime and the Agent's execution
  * mode, or undefined when none is approved. A Harness approved only for the other mode is a
@@ -1694,7 +1711,7 @@ function validateComputeAgentProvisioning(
 }
 
 function requireDedicatedNativeSupport(
-  harness: Readonly<RevisionHarnessDescriptor>,
+  harness: Readonly<Pick<RevisionHarnessDescriptor, "id" | "mode">>,
   sandbox: SandboxDriver | undefined,
   nativeWorkers: NativeWorkerSupportSource | undefined,
   {
@@ -1730,11 +1747,8 @@ function admitsOpenClawExecutionMode(
 ): true | Error {
   try {
     requireSandboxExecutionMode(sandbox, executionMode);
-    const harness = Object.freeze({ id: "openclaw", version: "capability", mode: executionMode });
-    requireDedicatedNativeSupport(harness, sandbox, nativeWorkers);
-    // Admission's Sandbox view can refuse on Driver settings alone (OpenShell's userNamespaces
-    // or ServiceAccounts).
-    sandbox?.configureAgent?.(Object.freeze({}), harness);
+    requireDedicatedNativeSupport({ id: "openclaw", mode: executionMode }, sandbox, nativeWorkers);
+    requireSandboxOpenClawMode(sandbox, executionMode);
     return true;
   } catch (error) {
     if (
@@ -2276,7 +2290,11 @@ export class OpenClawController {
       const admission = admitsOpenClawExecutionMode(sandbox, mode, this.nativeWorkers);
       if (admission === true) {
         executionModes.push(mode);
-      } else if (mode === "dedicated" && admission instanceof ConfigurationHarnessError) {
+      } else if (
+        mode === "dedicated" &&
+        admission instanceof ConfigurationHarnessError &&
+        sandbox?.supportsHarnessExecutionMode.openclaw[mode].reason !== undefined
+      ) {
         // A Sandbox Driver that provisions dedicated OpenClaw but whose settings refuse it: say
         // which setting, in admission's own words (finding 2373).
         settingRefusals[mode] = admission.message;
@@ -3496,7 +3514,7 @@ export class OpenClawController {
         principalId,
         namespace.id,
         workId,
-        "Only the initiating actor can retry provisioning.",
+        "retry",
       );
       const agent =
         record.agentId === undefined
@@ -9305,9 +9323,23 @@ export class OpenClawController {
    * a repository binding saved beside the Agent's network grants gets the Driver's overlap
    * check here, before deploy. Other policy refusals stay with save, apply and deploy.
    */
-  private refuseRepositoryNetworkOverlap(policy: Readonly<SandboxPolicy> | undefined): void {
+  private async refuseRepositoryNetworkOverlap(
+    principalId: string,
+    policy: Readonly<SandboxPolicy> | undefined,
+  ): Promise<void> {
+    if (policy === undefined || policy.additions.length === 0) {
+      return;
+    }
+    // Finding 2881: the overlap refusal names a saved grant, so it comes after SandboxPolicy
+    // read, as deploy's admission does when saved additions exist (finding 2151). An Agent
+    // update without that read learns nothing from it.
+    await this.authorize(principalId, "read", {
+      kind: "sandbox_policy",
+      id: policy.id,
+      namespaceId: policy.namespaceId,
+    });
     const driver = this.sandboxDriver();
-    if (policy === undefined || policy.additions.length === 0 || !driver?.admitNetworkPolicy) {
+    if (!driver?.admitNetworkPolicy) {
       return;
     }
     try {
@@ -10161,7 +10193,8 @@ export class OpenClawController {
       // The reverse of the policy save's check: a binding added beside a saved grant that
       // reaches the repository hosts (finding 2144).
       if ((repositoryBindings ?? agent.repositoryBindings ?? []).length > 0) {
-        this.refuseRepositoryNetworkOverlap(
+        await this.refuseRepositoryNetworkOverlap(
+          principalId,
           await state.sandboxPolicies.find(namespace.id, agent.id),
         );
       }
@@ -12293,9 +12326,7 @@ export class OpenClawController {
         }
         snapshots.push({ sourceId, credentialProxyId: owner.driver.id, sourceType: source.type });
       } else {
-        if (!this.protectedSourceTypes().some((p) => p.type.type === source.type)) {
-          await this.credentialSourceType(owner.driver, source.type);
-        }
+        await this.credentialSourceType(owner.driver, source.type);
         snapshots.push({ sourceId, credentialGatewayId: owner.driver.id, sourceType: source.type });
       }
     }
@@ -12329,9 +12360,9 @@ export class OpenClawController {
     principalId: string,
     record: Readonly<AgentProvisioningRecord>,
     {
-      statusRead = false,
+      statusRead,
       admission = false,
-    }: { readonly statusRead?: boolean; readonly admission?: boolean } = {},
+    }: { readonly statusRead?: "status" | "retry"; readonly admission?: boolean } = {},
   ): Promise<void> {
     const namespaceId = record.namespaceId;
     await this.authorizeProvisioningRequest(principalId, namespaceId);
@@ -12430,8 +12461,14 @@ export class OpenClawController {
       runtimeImage: !statusRead,
       stored: !admission,
     });
-    // The Sandbox view is admission for writes too: its refusals can depend on Driver settings
-    // (OpenShell's userNamespaces), and a status read still reports the stored work.
+    // Static support and real Configuration transformation are write admission; status reads
+    // must still report stored work after Installation settings change.
+    if (!statusRead) {
+      requireSandboxExecutionMode(sandbox, harness.mode);
+      if (harness.id === "openclaw") {
+        requireSandboxOpenClawMode(sandbox, harness.mode);
+      }
+    }
     const configuration = statusRead
       ? plan.configuration.values
       : (sandbox?.configureAgent?.(plan.configuration.values, harness) ??
@@ -12495,7 +12532,8 @@ export class OpenClawController {
         this.validateRepositoryBrokerNetworkProxy(harness, plugins, configuration, sandbox);
       }
     }
-    if (agent !== undefined) {
+    // Retry keeps this admission before its lifecycle checks; status only reads saved progress.
+    if (agent !== undefined && statusRead !== "status") {
       this.admitRepositoryCredentials(
         agent,
         compute,
@@ -12511,8 +12549,7 @@ export class OpenClawController {
     principalId: string,
     namespaceId: string,
     workId: string,
-    // What another actor is told: a retry says so, a status read says so (finding 2588).
-    otherActorDenial = "Only the initiating actor can read provisioning status.",
+    operation: "status" | "retry" = "status",
   ) {
     if (!isNonEmptyString(workId)) {
       throw new ScopeViolationError("The exact provisioning work identity is missing.");
@@ -12526,11 +12563,17 @@ export class OpenClawController {
       );
     }
     if (found.record.actorId !== principalId) {
-      throw new CallerStateDeniedError(otherActorDenial);
+      throw new CallerStateDeniedError(
+        operation === "retry"
+          ? "Only the initiating actor can retry provisioning."
+          : "Only the initiating actor can read provisioning status.",
+      );
     }
     // Retry repeats the full check, native support, plugin policy, the Compute plan and Harness
     // authentication checks included, after its lifecycle checks.
-    await this.authorizeProvisioningRecord(state, principalId, found.record, { statusRead: true });
+    await this.authorizeProvisioningRecord(state, principalId, found.record, {
+      statusRead: operation,
+    });
     return found;
   }
 
@@ -14976,6 +15019,9 @@ export class OpenClawController {
     compute: ComputeDriver,
     sandbox: SandboxDriver | undefined,
   ): OpenClawConfigurationDocument {
+    if (harness.id === "openclaw") {
+      requireSandboxOpenClawMode(sandbox, harness.mode);
+    }
     const sandboxConfiguration =
       sandbox?.configureAgent !== undefined
         ? frozenValues(sandbox.configureAgent(frozenValues(values), harness))

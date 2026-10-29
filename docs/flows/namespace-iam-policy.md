@@ -116,7 +116,7 @@ for the target kind.
 Agent and Configuration writes reconcile generated credential grants through
 `packages/occ/src/index.ts:ensureAgentOperateGrants`. Both this path and worker
 activation cleanup use
-`packages/occ/src/agent-credential-revisions.ts:retainedAgentCredentialRevisions`
+`packages/occ/src/ports/agent-credential-revisions.ts:retainedAgentCredentialRevisions`
 to retain credentials referenced by the active revision or queued and claimed
 deployment work, as well as the current draft. A draft edit cannot withdraw a
 grant from a deployment still in progress. Once that work is terminal, the next

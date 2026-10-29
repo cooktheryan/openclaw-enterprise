@@ -1,10 +1,10 @@
 import type { Agent, AgentRevision } from "@openclaw-enterprise/contracts";
-import { DependencyUnavailableError } from "./errors.ts";
-import type { PlatformReadView } from "./state/platform-state.ts";
+import { DependencyUnavailableError } from "../errors.ts";
+import type { createPlatformReadView } from "./platform-read-view.ts";
 
 /** Revisions that can still use credentials while the draft changes. */
 export async function retainedAgentCredentialRevisions(
-  state: PlatformReadView,
+  state: ReturnType<typeof createPlatformReadView>,
   agent: Readonly<Agent>,
 ): Promise<readonly Readonly<AgentRevision>[]> {
   const retained: Readonly<AgentRevision>[] = [];

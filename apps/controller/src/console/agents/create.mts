@@ -1836,30 +1836,34 @@ function renderAgentForm(
   // Agent Authors receive exact credential grants in the Agent mutation transaction; other members
   // need an Installation administrator to grant access to the Agent's Secrets.
   const namespaceName = context.namespace?.name ?? "this Namespace";
-  const accessStatus = statusBlock(
-    "info",
-    "Your access",
-    `${
-      typeof presetOptions.presetName === "string"
-        ? `You can create Agents in ${namespaceName}. Installation-wide capabilities are not readable with your access, so the options below come from this Namespace's Presets.`
-        : `You can create Agents in ${namespaceName}. Installation-wide capabilities are not readable with your access, so Create Agent checks the Configuration with the server before saving it.`
-    } ${MEMBER_CREDENTIAL_ACCESS}`,
-    [],
-    { id: "create-agent-access", hidden: true },
+  const memberAccess = `${
+    typeof presetOptions.presetName === "string"
+      ? `You can create Agents in ${namespaceName}. Installation-wide capabilities are not readable with your access, so the options below come from this Namespace's Presets.`
+      : `You can create Agents in ${namespaceName}. Installation-wide capabilities are not readable with your access, so Create Agent checks the Configuration with the server before saving it.`
+  } ${MEMBER_CREDENTIAL_ACCESS}`;
+  // A refused Installation read with no known Agent create grant is a refusal, not a hint: it
+  // takes the same slot, with the permission retry as its action (finding 2092).
+  const retryPermissionCheck = button("Retry permission check", () => void rereadPermissions(), {
+    tone: "secondary",
+  });
+  const accessBody = element("p", { className: "status-body" }, memberAccess);
+  const accessActions = element(
+    "div",
+    { className: "status-actions", hidden: true },
+    retryPermissionCheck,
   );
   function updateAccessStatusMessage() {
-    const body = accessStatus.querySelector(".status-body");
-    if (!body) {
-      return;
-    }
     const access = namespacePermissions?.agents?.agentAuthor
       ? AGENT_AUTHOR_CREDENTIAL_ACCESS
       : MEMBER_CREDENTIAL_ACCESS;
-    body.textContent = `${
-      typeof presetOptions.presetName === "string"
-        ? `You can create Agents in ${namespaceName}. Installation-wide capabilities are not readable with your access, so the options below come from this Namespace's Presets.`
-        : `You can create Agents in ${namespaceName}. Installation-wide capabilities are not readable with your access, so Create Agent checks the Configuration with the server before saving it.`
-    } ${access}`;
+    showAccess(
+      "info",
+      `${
+        typeof presetOptions.presetName === "string"
+          ? `You can create Agents in ${namespaceName}. Installation-wide capabilities are not readable with your access, so the options below come from this Namespace's Presets.`
+          : `You can create Agents in ${namespaceName}. Installation-wide capabilities are not readable with your access, so Create Agent checks the Configuration with the server before saving it.`
+      } ${access}`,
+    );
   }
   async function grantConfigurationSecretAccess(
     agent: Pick<Agent, "servicePrincipalId">,
@@ -1888,6 +1892,16 @@ function renderAgentForm(
       }
       await ensureCredentialOperateBinding(context, agent, secret);
     }
+  }
+  const accessStatus = statusBlock("info", "Your access", [accessBody, accessActions], [], {
+    id: "create-agent-access",
+    hidden: true,
+  });
+  function showAccess(tone: "info" | "warning" | "danger", body: string) {
+    setStatusTone(accessStatus, tone);
+    setText(accessBody, body);
+    accessActions.hidden = !permissionsUnknown;
+    accessStatus.hidden = false;
   }
   // The Preset this form started from (flows.md C8).
   const presetBadge =
@@ -2019,9 +2033,9 @@ function renderAgentForm(
     },
     { tone: "danger" },
   );
+  // A refused Installation read stays refused: its access block offers a permission reread instead.
   const retryCapabilityDiscovery = button("Retry capability check", () => {
-    // A refused Installation read stays refused: reread only the permission answer.
-    void (capabilityDiscoveryDenied ? rereadPermissions() : loadInstallationCapabilities());
+    void loadInstallationCapabilities();
   });
   const recoveryMessage = element("p", { className: "muted" });
   const requireRepositoryReload = () => {
@@ -2948,6 +2962,9 @@ function renderAgentForm(
       (namespaceRefusesAgents() || (!selectedModeUnavailable() && provisioningWaitsForNamespace()))
     ) {
       submit.setAttribute("aria-describedby", capabilityStatus.id);
+    } else if (capabilityDiscoveryDenied && !capabilitiesUnreadable && !accessStatus.hidden) {
+      // The refused Installation read's block above the form says why Create waits (finding 2092).
+      submit.setAttribute("aria-describedby", accessStatus.id);
     } else {
       submit.removeAttribute("aria-describedby");
     }
@@ -2957,12 +2974,9 @@ function renderAgentForm(
     removeCredentialRegistration.disabled = pending;
     retryProvisioning.hidden = !provisioningAttempt;
     retryProvisioning.disabled = pending || !provisioningAttempt;
-    retryCapabilityDiscovery.hidden =
-      !capabilityDiscoveryFailed || (capabilityDiscoveryDenied && !permissionsUnknown);
-    retryCapabilityDiscovery.disabled = pending || permissionsReading;
-    retryCapabilityDiscovery.textContent = capabilityDiscoveryDenied
-      ? "Retry permission check"
-      : "Retry capability check";
+    retryCapabilityDiscovery.hidden = !capabilityDiscoveryFailed || capabilityDiscoveryDenied;
+    retryCapabilityDiscovery.disabled = pending;
+    retryPermissionCheck.disabled = pending || permissionsReading;
     submit.hidden = credentialGrantRefused;
     submit.textContent = savedAgent ? "Retry credential access" : "Create Agent";
     submit.setAttribute("aria-busy", createPending ? "true" : "false");
@@ -3104,18 +3118,22 @@ function renderAgentForm(
   function settleRefusedCapabilities() {
     const create = namespacePermissions?.agents?.create;
     permissionsUnknown = typeof create !== "boolean";
+    capabilityStatus.textContent = "";
     if (create === true) {
       capabilitiesUnreadable = true;
-      accessStatus.hidden = false;
       updateAccessStatusMessage();
       return;
     }
-    capabilityStatus.textContent = permissionsUnknown ? PERMISSIONS_UNREAD : INSTALLATION_REFUSAL;
+    if (permissionsUnknown) {
+      showAccess("warning", PERMISSIONS_UNREAD);
+    } else {
+      showAccess("danger", INSTALLATION_REFUSAL);
+    }
   }
   async function rereadPermissions() {
     operateAnswer.reset();
     permissionsReading = true;
-    capabilityStatus.textContent = "Checking your permissions in this Namespace…";
+    showAccess("info", "Checking your permissions in this Namespace…");
     updateControls();
     try {
       namespacePermissions = (await request(
@@ -3136,14 +3154,14 @@ function renderAgentForm(
     }
     settleRefusedCapabilities();
     updateControls();
-    // The retry hides once answered: its outcome takes focus rather than the page.
+    // The pressed retry was disabled while the check ran: it takes focus back when the check
+    // failed again; once answered it hides and the answer takes focus rather than the page.
     const active = document.activeElement;
-    if (
-      retryCapabilityDiscovery.hidden &&
-      (!active || active === document.body || active === retryCapabilityDiscovery)
-    ) {
-      const outcome = accessStatus.hidden ? capabilityStatus : accessStatus;
-      outcome.tabIndex = -1;
+    if (!active || active === document.body || active === retryPermissionCheck) {
+      const outcome = accessActions.hidden ? accessStatus : retryPermissionCheck;
+      if (outcome === accessStatus) {
+        accessStatus.tabIndex = -1;
+      }
       outcome.focus({ preventScroll: true });
       outcome.scrollIntoView({ block: "nearest" });
     }

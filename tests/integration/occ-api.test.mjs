@@ -1,3 +1,4 @@
+import { DEDICATED_OPENCLAW_SUPPORT } from "../helpers/sandbox-driver.ts";
 import { assertApiError } from "../helpers/api-error.mjs";
 import { plaintextGatewayComputeDrivers } from "../helpers/plaintext-gateway-compute.mjs";
 import { SlackChannelDriver } from "../../apps/controller/src/drivers/channel/slack.ts";
@@ -1299,6 +1300,7 @@ test("Agent reads return the bound credentialSources; revision reads return only
     id: "sandbox-api",
     capability: "sandbox",
     implementation: "test-sandbox",
+    supportsHarnessExecutionMode: DEDICATED_OPENCLAW_SUPPORT,
     facets: ["networking", "filesystem", "process"],
     async cleanup() {},
   };
@@ -1455,6 +1457,7 @@ test("refresh source PATCH and rotate refuse a stale refresh token and audit a f
     id: "sandbox-refresh-api",
     capability: "sandbox",
     implementation: "test-sandbox",
+    supportsHarnessExecutionMode: DEDICATED_OPENCLAW_SUPPORT,
     facets: ["networking", "filesystem", "process"],
     async cleanup() {},
   };
@@ -4177,6 +4180,7 @@ test("a saved Google package refuses an incompatible Agent mode, Harness or Comp
     id: "sandbox-native",
     capability: "sandbox",
     implementation: "test-native-sandbox",
+    supportsHarnessExecutionMode: DEDICATED_OPENCLAW_SUPPORT,
     facets: ["networking", "filesystem", "process"],
     async provisionHarness() {},
     async cleanup() {},
@@ -9057,6 +9061,7 @@ test("saved-Agent discovery offers the Google package only where Agent save admi
   const sandbox = {
     id: "sandbox-native",
     capability: "sandbox",
+    supportsHarnessExecutionMode: DEDICATED_OPENCLAW_SUPPORT,
     implementation: "test-native-sandbox",
     facets: ["networking", "filesystem", "process"],
     async provisionHarness() {},

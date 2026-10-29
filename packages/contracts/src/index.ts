@@ -1394,6 +1394,7 @@ export type {
   CredentialSourceDeviceAuthorizationResult,
 } from "./credential-refresh.ts";
 export type {
+  HarnessExecutionModeSupport,
   SandboxDriver,
   SandboxRepositoryAccess,
   KubernetesNamespacedResource,

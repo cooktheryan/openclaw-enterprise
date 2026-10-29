@@ -1,3 +1,4 @@
+import { DEDICATED_OPENCLAW_SUPPORT } from "../helpers/sandbox-driver.ts";
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { execFile, spawn, spawnSync } from "node:child_process";
@@ -124,7 +125,8 @@ test("provider Harness endpoint bootstraps Gateway before provisioning and reque
   assert.deepEqual(setupRequests, [
     {
       url: driver.getGatewayEndpoint(revision),
-      nodeUrl: `ws://${gatewayName}.${gatewayNamespace}.svc.cluster.local:8080/node`,
+      // The node needs the scoped TLS route for HTTP transfers and proxy attribution.
+      nodeUrl: `wss://agents.example.internal/namespaces/${revision.namespaceId}/agents/${revision.agentId}/node`,
     },
   ]);
   assert.equal(provisions.length, 1);
@@ -906,6 +908,7 @@ test("provider Harness protected execution is released only on current signed in
   const sandbox = {
     ...fixture.sandbox,
     capability: "sandbox",
+    supportsHarnessExecutionMode: DEDICATED_OPENCLAW_SUPPORT,
     facets: ["networking"],
     cleanup: assert.fail,
     enrollHarness: assert.fail,

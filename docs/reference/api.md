@@ -2341,7 +2341,42 @@ List or search available plugins for Agent creation using the selected Driver
 
 **Content type:** `application/json`
 
-Schema: `object or object or object or object`.
+**Alternative 1:**
+
+| Field | Type | Required | Constraints |
+| --- | --- | --- | --- |
+| `credentialSource` | `object` | Yes | Exact OCC credential source reference. Shape: `{ "kind": "credential_source", "namespaceId": "ns_...", "id": "cs_..." }`. |
+| `credentialSource.id` | `string` | Yes | pattern: `^cs_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$` |
+| `credentialSource.kind` | `"credential_source"` | Yes | — |
+| `credentialSource.namespaceId` | `string` | Yes | pattern: `^ns_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$` |
+| `cursor` | `string` | No | min length: 1; max length: 8192 |
+| `q` | `string` | No | max length: 1024 |
+
+**Alternative 2:**
+
+| Field | Type | Required | Constraints |
+| --- | --- | --- | --- |
+| `cursor` | `string` | No | min length: 1; max length: 8192 |
+| `q` | `string` | No | max length: 1024 |
+
+**Alternative 3:**
+
+| Field | Type | Required | Constraints |
+| --- | --- | --- | --- |
+| `accessToken` | `string` | Yes | min length: 1; max length: 16384; pattern: `\S` |
+| `cursor` | `string` | No | min length: 1; max length: 8192 |
+| `q` | `string` | No | max length: 1024 |
+
+**Alternative 4:**
+
+| Field | Type | Required | Constraints |
+| --- | --- | --- | --- |
+| `cursor` | `string` | No | min length: 1; max length: 8192 |
+| `q` | `string` | No | max length: 1024 |
+| `secretRef` | `object` | Yes | Exact OCC Secret reference. Shape: `{ "kind": "secret", "namespaceId": "ns_...", "id": "sec_..." }`. |
+| `secretRef.id` | `string` | Yes | pattern: `^sec_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$` |
+| `secretRef.kind` | `"secret"` | Yes | — |
+| `secretRef.namespaceId` | `string` | Yes | pattern: `^ns_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$` |
 
 ##### Responses
 
@@ -2417,7 +2452,38 @@ Read plugin details using the selected Driver
 
 **Content type:** `application/json`
 
-Schema: `object or object or object or object`.
+**Alternative 1:**
+
+| Field | Type | Required | Constraints |
+| --- | --- | --- | --- |
+| `credentialSource` | `object` | Yes | Exact OCC credential source reference. Shape: `{ "kind": "credential_source", "namespaceId": "ns_...", "id": "cs_..." }`. |
+| `credentialSource.id` | `string` | Yes | pattern: `^cs_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$` |
+| `credentialSource.kind` | `"credential_source"` | Yes | — |
+| `credentialSource.namespaceId` | `string` | Yes | pattern: `^ns_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$` |
+| `pluginId` | `string` | Yes | min length: 1; max length: 256 |
+
+**Alternative 2:**
+
+| Field | Type | Required | Constraints |
+| --- | --- | --- | --- |
+| `pluginId` | `string` | Yes | min length: 1; max length: 256 |
+
+**Alternative 3:**
+
+| Field | Type | Required | Constraints |
+| --- | --- | --- | --- |
+| `accessToken` | `string` | Yes | min length: 1; max length: 16384; pattern: `\S` |
+| `pluginId` | `string` | Yes | min length: 1; max length: 256 |
+
+**Alternative 4:**
+
+| Field | Type | Required | Constraints |
+| --- | --- | --- | --- |
+| `pluginId` | `string` | Yes | min length: 1; max length: 256 |
+| `secretRef` | `object` | Yes | Exact OCC Secret reference. Shape: `{ "kind": "secret", "namespaceId": "ns_...", "id": "sec_..." }`. |
+| `secretRef.id` | `string` | Yes | pattern: `^sec_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$` |
+| `secretRef.kind` | `"secret"` | Yes | — |
+| `secretRef.namespaceId` | `string` | Yes | pattern: `^ns_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$` |
 
 ##### Responses
 
@@ -2921,7 +2987,7 @@ Replace an exact Namespace-owned Agent's editable draft
 
 **Operation ID:** `updateAgent`
 
-**Permissions:** Requires update permission on the requested Agent. Requires administer permission on the Installation when the request changes the Agent's saved gatewayManagedMode setting. Requires read permission on the requested Configuration. Requires read permission on each currently associated or newly associated ServiceAccount when present. Requires operate permission on each bound Secret when Secret bindings are present or selected. Requires operate permission on each CredentialSource the Agent lists or names in harnessAuth, before and after the update.
+**Permissions:** Requires update permission on the requested Agent. Requires administer permission on the Installation when the request changes the Agent's saved gatewayManagedMode setting. Requires read permission on the requested Configuration. Requires read permission on each currently associated or newly associated ServiceAccount when present. Requires operate permission on each bound Secret when Secret bindings are present or selected. Requires operate permission on each CredentialSource the Agent lists or names in harnessAuth, before and after the update. Requires read permission on the Agent's SandboxPolicy when it has saved network policy additions and the Agent has repository bindings after the update.
 
 | Action | Resource | Scope |
 | --- | --- | --- |
@@ -2931,6 +2997,7 @@ Replace an exact Namespace-owned Agent's editable draft
 | `read` | `service_account` | `requested` (when associated) |
 | `operate` | `secret` | `requested` (when bound) |
 | `operate` | `credential_source` | `requested` (when bound) |
+| `read` | `sandbox_policy` | `requested` (when saved network policy additions exist) |
 
 ##### Parameters
 
@@ -2945,26 +3012,13 @@ Replace an exact Namespace-owned Agent's editable draft
 
 **Content type:** `application/json`
 
-| Field | Type | Required | Constraints |
-| --- | --- | --- | --- |
-| `backendId` | `string or null` | No | — |
-| `configurationId` | `string` | No | pattern: `^cfg_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$` |
-| `credentialSources` | `array<object>` | No | max items: 8; Every credential source the Agent uses, at each source's endpoints. A credential-source harnessAuth names one entry. The selected Credential Gateway injects them at deployment; the Agent never receives their values. |
-| `credentialSources[].sourceId` | `string` | Yes | pattern: `^cs_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$` |
-| `executionMode` | `"embedded" or "dedicated"` | No | — |
-| `gatewayManagedMode` | `boolean` | No | Whether OCE restricts Gateway-local administration. Defaults on when the selected Compute Driver supports it, otherwise off. Changing the setting requires Installation administer permission and takes effect on deployment. |
-| `harnessAuth` | `object or object or object or object or null` | No | — |
-| `pluginApprovers` | `PluginApprovers or null` | No | — |
-| `plugins` | `PluginDesiredState` | No | Agent plugin selection map. Keys must be 1-253 characters matching ^[A-Za-z0-9._~:@-]{1,253}$. |
-| `repositoryAccess` | `object` | No | Desired repository access. Each omitted repository profile inherits defaultProfile; explicit profiles remain overrides. Mutually exclusive with repositoryBindings in create, provision, and update requests. |
-| `repositoryAccess.defaultProfile` | `string` | Yes | min length: 1; max length: 128; pattern: `^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$` |
-| `repositoryAccess.repositories` | `array<object>` | Yes | max items: 16 |
-| `repositoryAccess.repositories[].profile` | `string` | No | min length: 1; max length: 128; pattern: `^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$` |
-| `repositoryAccess.repositories[].repositoryRef` | `string` | Yes | min length: 1; max length: 128; pattern: `^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$` |
-| `repositoryBindings` | `array<object>` | No | max items: 16; Requested repository references and optional profiles. Omission means no bindings on create and preserves bindings on update; an empty update clears bindings. Admission requires unique repository references. |
-| `repositoryBindings[].profile` | `string` | No | min length: 1; max length: 128; pattern: `^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$` |
-| `repositoryBindings[].repositoryRef` | `string` | Yes | min length: 1; max length: 128; pattern: `^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$` |
-| `repositoryStandingApproval` | `object or object` | No | — |
+**Alternative 1:**
+
+Schema: `any`.
+
+**Alternative 2:**
+
+Schema: `any`.
 
 ##### Responses
 
@@ -3132,7 +3186,7 @@ Save an Agent revision from the Agent's saved settings
 
 **Operation ID:** `deployAgent`
 
-**Permissions:** Requires deploy permission on the requested Agent. Requires read permission on the requested Configuration. Requires read permission on the Agent when the selected Compute Driver must generate missing runtime credentials for its first deployment. Requires operate permission on the Agent when the selected Compute Driver must generate missing runtime credentials for its first deployment. Requires read permission on each currently associated or newly associated ServiceAccount when present. Requires operate permission on each bound Secret when Secret bindings are present or selected. Requires operate permission on each CredentialSource the Agent lists or names in harnessAuth. Deployment also requires the owning Agent service principal to have operate permission on each bound Secret and on each CredentialSource the Agent lists.
+**Permissions:** Requires deploy permission on the requested Agent. Requires read permission on the requested Configuration. Requires read permission on the Agent when the selected Compute Driver must generate missing runtime credentials for its first deployment. Requires operate permission on the Agent when the selected Compute Driver must generate missing runtime credentials for its first deployment. Requires read permission on each currently associated or newly associated ServiceAccount when present. Requires operate permission on each bound Secret when Secret bindings are present or selected. Requires operate permission on each CredentialSource the Agent lists or names in harnessAuth. Requires read permission on the Agent's SandboxPolicy when it has saved network policy additions. Deployment also requires the owning Agent service principal to have operate permission on each bound Secret and on each CredentialSource the Agent lists.
 
 | Action | Resource | Scope |
 | --- | --- | --- |
@@ -3143,6 +3197,7 @@ Save an Agent revision from the Agent's saved settings
 | `read` | `service_account` | `requested` (when associated) |
 | `operate` | `secret` | `requested` (when bound) |
 | `operate` | `credential_source` | `requested` (when bound) |
+| `read` | `sandbox_policy` | `requested` (when saved network policy additions exist) |
 
 ##### Parameters
 
@@ -4891,7 +4946,60 @@ Search a channel directory using an authorized Namespace Secret
 
 **Content type:** `application/json`
 
-Schema: `object or object or object or object or object or object`.
+**Alternative 1:**
+
+| Field | Type | Required | Constraints |
+| --- | --- | --- | --- |
+| `cursor` | `string` | No | min length: 1; max length: 2048; pattern: `^[^\u0000]*$` |
+| `kind` | `"users" or "channels"` | Yes | — |
+| `query` | `string` | No | max length: 200; pattern: `^[^\u0000]*$` |
+| `secretId` | `string` | Yes | pattern: `^sec_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$` |
+
+**Alternative 2:**
+
+| Field | Type | Required | Constraints |
+| --- | --- | --- | --- |
+| `agentId` | `string` | Yes | pattern: `^agt_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$` |
+| `cursor` | `string` | No | min length: 1; max length: 2048; pattern: `^[^\u0000]*$` |
+| `kind` | `"users" or "channels"` | Yes | — |
+| `query` | `string` | No | max length: 200; pattern: `^[^\u0000]*$` |
+| `secretId` | `string` | Yes | pattern: `^sec_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$` |
+
+**Alternative 3:**
+
+| Field | Type | Required | Constraints |
+| --- | --- | --- | --- |
+| `configurationId` | `string` | Yes | pattern: `^cfg_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$` |
+| `cursor` | `string` | No | min length: 1; max length: 2048; pattern: `^[^\u0000]*$` |
+| `kind` | `"users" or "channels"` | Yes | — |
+| `query` | `string` | No | max length: 200; pattern: `^[^\u0000]*$` |
+| `secretId` | `string` | Yes | pattern: `^sec_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$` |
+
+**Alternative 4:**
+
+| Field | Type | Required | Constraints |
+| --- | --- | --- | --- |
+| `ids` | `array<string>` | Yes | min items: 1; max items: 20 |
+| `kind` | `"users" or "channels"` | Yes | — |
+| `secretId` | `string` | Yes | pattern: `^sec_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$` |
+
+**Alternative 5:**
+
+| Field | Type | Required | Constraints |
+| --- | --- | --- | --- |
+| `agentId` | `string` | Yes | pattern: `^agt_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$` |
+| `ids` | `array<string>` | Yes | min items: 1; max items: 20 |
+| `kind` | `"users" or "channels"` | Yes | — |
+| `secretId` | `string` | Yes | pattern: `^sec_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$` |
+
+**Alternative 6:**
+
+| Field | Type | Required | Constraints |
+| --- | --- | --- | --- |
+| `configurationId` | `string` | Yes | pattern: `^cfg_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$` |
+| `ids` | `array<string>` | Yes | min items: 1; max items: 20 |
+| `kind` | `"users" or "channels"` | Yes | — |
+| `secretId` | `string` | Yes | pattern: `^sec_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$` |
 
 ##### Responses
 
@@ -6074,7 +6182,24 @@ Create an exact-resource binding or managed Agent Author Namespace binding
 
 **Content type:** `application/json`
 
-Schema: `object or object`.
+**Alternative 1:**
+
+| Field | Type | Required | Constraints |
+| --- | --- | --- | --- |
+| `resourceId` | `string` | Yes | min length: 1; max length: 200 |
+| `resourceKind` | `"namespace" or "agent" or "agent_revision" or "configuration" or "credential_source" or "sandbox_policy" or "preset" or "secret" or "service_account"` | Yes | — |
+| `roleId` | `string` | Yes | min length: 1; max length: 200 |
+| `subjectId` | `string` | Yes | min length: 1; max length: 200 |
+| `subjectKind` | `"identity"` | Yes | — |
+
+**Alternative 2:**
+
+| Field | Type | Required | Constraints |
+| --- | --- | --- | --- |
+| `roleId` | `string` | Yes | min length: 1; max length: 200 |
+| `scope` | `"namespace"` | Yes | — |
+| `subjectId` | `string` | Yes | min length: 1; max length: 200 |
+| `subjectKind` | `"identity"` | Yes | — |
 
 ##### Responses
 
@@ -6250,7 +6375,20 @@ Create an immutable Namespace IAM Role or managed Agent Author preset
 
 **Content type:** `application/json`
 
-Schema: `object or object`.
+**Alternative 1:**
+
+| Field | Type | Required | Constraints |
+| --- | --- | --- | --- |
+| `preset` | `"agent-author"` | Yes | — |
+
+**Alternative 2:**
+
+| Field | Type | Required | Constraints |
+| --- | --- | --- | --- |
+| `name` | `string` | No | min length: 1; max length: 200; pattern: `^(?!\s)(?!.*\s$)[^\u0000-\u001f\u007f-\u009f\u2028\u2029]+$` |
+| `permissions` | `array<object>` | Yes | min items: 1; max items: 64 |
+| `permissions[].action` | `"create" or "read" or "update" or "delete" or "deploy" or "operate" or "administer" or "read_logs" or "manage_policy"` | Yes | — |
+| `permissions[].resourceKind` | `"namespace" or "agent" or "agent_revision" or "configuration" or "credential_source" or "sandbox_policy" or "preset" or "secret" or "service_account"` | Yes | — |
 
 ##### Responses
 
