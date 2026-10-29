@@ -1,7 +1,7 @@
 ---
 created: 2026-09-09
 updated: 2026-10-29
-last_updated_session: authoring-run/22e56d10-b3c5-43f9-b088-c060fbfbe64f
+last_updated_session: authoring-run/2282a5a5-302e-4a87-b067-449b9b4f2e22
 ---
 
 # Console Agent editing and runtime requests
@@ -360,7 +360,9 @@ Moved to [Agent stop and deletion](agent-stop-and-deletion.md#8-confirm-deletion
 
 - 2026-10-29 11:19: Clear matching deployment evidence on selected-record refusal. (denial-coherence - e98223e893bcfb3ca23f0fb3ba4ea36af3a41f9d)
 
-- 2026-10-29 10:27: Retain deployment progress through transient reads. (authoring-run/26ccef3f-405c-4275-bef6-7c1722ae15c8 - bd67c46d5e5340e95d5e80bc850ebe41bc80f6ed)
+- 2026-10-29 11:04: Add Agent Author credential grants to the Agent editing flow. (authoring-run/2282a5a5-302e-4a87-b067-449b9b4f2e22 - 3d0b3b5454ecb6523180f5719d82e4c8e1426e52)
+
+- 2026-10-29 10:27: Retain deployment progress through transient reads. (authoring-run/26ccef3f-405c-4275-bef-6c1722ae15c8 - bd67c46d5e5340e95d5e80bc850ebe41bc80f6ed)
 
 - 2026-10-29 10:06: Describe transactional credential grants and replacement cleanup for Agent Authors. (authoring-run/32233c9b-0a2e-4472-ae28-676de3a66fcd - 3b9f76e11c3a7ffb5997de61c1e448370c521a92)
 
