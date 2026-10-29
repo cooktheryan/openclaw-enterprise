@@ -62,7 +62,14 @@ export const DeploymentRetrying = story("deploymentRetrying");
 export const DeploymentRunning = story("deploymentRunning");
 export const DeploymentRunningActivates = story("deploymentRunningActivates");
 export const DeploymentCompletesRereadFails = story("deploymentCompletesRereadFails");
-export const DeploymentStatusReadRecovers = story("deploymentStatusReadRecovers");
+export const DeploymentStatusReadRecovers = {
+  ...story("deploymentStatusReadRecovers"),
+  name: "New version in progress, one status read fails",
+};
+export const DeploymentRecordRefused = {
+  ...story("deploymentRecordRefused"),
+  name: "Selected record refusal clears shared evidence",
+};
 export const DeploymentActivityLoading = story("deploymentActivityLoading");
 export const CurrentVersionDuringDeployment = story("currentVersionDuringDeployment");
 export const DeploymentFailed = story("deploymentFailed");
@@ -128,6 +135,10 @@ export const AgentMissing = { ...story("agentMissing"), name: "Agent unavailable
 export const ConfigurationError = {
   ...story("configurationError"),
   name: "Configuration unavailable",
+};
+export const ConfigurationReadDeniedReloadRefocus = {
+  ...story("configurationReadDeniedReloadRefocus"),
+  name: "Configuration read denied across reload and refocus",
 };
 export const UnreadableAgentConfiguration = story("unreadableAgentConfiguration");
 export const UnreadableRevisionConfiguration = story("unreadableRevisionConfiguration");
@@ -242,3 +253,12 @@ export const PolicyApplied = story("policyApplied");
 export const PolicyRetryApplication = story("policyRetryApplication");
 export const PolicyEditingAdminDenied = story("policyEditingAdminDenied");
 export const PolicyNoNetworkLimits = story("policyNoNetworkLimits");
+
+export const AuthenticationReadDenied = {
+  ...story("authenticationReadDenied"),
+  name: "Authentication Save read denied",
+};
+export const ConfigurationSaveReadDenied = {
+  ...story("configurationSaveReadDenied"),
+  name: "Configuration Save read denied",
+};

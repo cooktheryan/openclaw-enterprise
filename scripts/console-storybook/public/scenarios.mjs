@@ -1534,7 +1534,16 @@ export const scenarios = {
     path: "/console/namespaces",
     namespaceDeleteDenied: true,
     description:
-      "The advisory permission answer disables deletion and explains the exact required grant.",
+      "A member's advisory permission answer refuses deletion. The trash icon looks disabled and its reason says only an Installation administrator can delete a Namespace.",
+  },
+  namespaceDeleteRestricted: {
+    group: "Pages/Namespaces",
+    name: "Delete blocked by a Restriction",
+    path: "/console/namespaces",
+    namespaceDeleteRestricted: true,
+    description:
+      "An Installation administrator whom a deny Restriction keeps from deleting the Namespace. The reason names the Restriction and who can lift it, not an administrator to ask.",
+    gap: "The permission answer is advisory. The controller still authorizes each delete.",
   },
   namespaceDeleteRefused: {
     group: "Pages/Namespaces",
@@ -5373,9 +5382,10 @@ export const scenarios = {
     description:
       "One deployment status read fails while v7 is deploying. The notice keeps Deploying version rather than turning Historical, polling continues, and the next read records success and makes v7 current. The deployment, failure and activation are simulated.",
     steps: [
-      "Open Deployment before the first poll, choose folded or expanded details, and Tab to Run diagnostics for this version. The transient failure preserves that choice and the visible focused control; the selected record clears its old outcome and shows the error outside the fold. Reset to repeat the other choice. The later completion is a terminal result, not routine pending recovery.",
-      'On arrival the notice begins "Deploying version". Within about 5 s Latest visible deployment reads "v7 · Unavailable" and the notice still begins "Deploying version".',
+      "Open Deployment before the first poll, choose folded or expanded details, and Tab to Run diagnostics for this version. The transient failure preserves that choice and the visible focused control; the selected record retains its outcome with an update-delayed label. Expanded activity keeps the last readable progress and labels the delayed update without an alert. Repeat without focusing a control: the summary must stay in place. Reset to repeat the other choice. The later completion is a terminal result, not routine pending recovery.",
+      'On arrival the notice begins "Deploying version". Within about 5 s Latest visible deployment keeps "v7 · In progress" with "Update delayed" in its existing status line and the notice still begins "Deploying version".',
       'Within about 10 s the notice begins "Current version" and Selected for service reads v7, with no "Historical version" in between.',
+      "After completion, hover and focus Refresh deployment, then press Enter. The hovered fill and focus stay while the busy control blocks another Enter; the selected version and tab stay unchanged.",
     ],
   },
   deploymentDeferred: {
@@ -5916,6 +5926,7 @@ export const scenarios = {
       "Watch v7 change from running to failed. The recovery card then leads the page, as it does on a reload, and Deployment details fold under it. The deployment and failure are simulated.",
     steps: [
       'On arrival v7\'s Configuration tab notice begins "Deploying version". Once v7 reads Failed, it begins "Failed version" and Selected for service still reads v6.',
+      "Repeat after reloading: focus Refresh record and press Enter before the next poll. Completion must also refresh the overview while preserving focus.",
       'Once v7 fails, "Deployment failed · v7" is the first card and Deployment details are folded. Open them: they show the failure\'s record and stay open.',
     ],
   },
@@ -6169,6 +6180,31 @@ export const scenarios = {
       "Focus Refresh record and press Enter. While Refreshing… is shown, the button keeps focus and repeated Enter or Space does not start another read. Completion leaves focus on Refresh record.",
       "Refresh again and press Tab before the response arrives. Completion leaves focus on the control you moved to.",
     ],
+  },
+  deploymentRecordRefused: {
+    group: "Pages/Agent detail",
+    name: "Selected record refusal clears shared evidence",
+    path: `${candidateVersion}&tab=deployment`,
+    deployed: true,
+    candidateDeploymentStatus: "succeeded",
+    rules: [
+      {
+        method: "GET",
+        suffix: "/deployments/rev_00000000-0000-4000-8000-000000000007",
+        skip: 1,
+        once: true,
+        status: 403,
+        code: "FORBIDDEN",
+      },
+    ],
+    description:
+      "A selected-record refresh loses access to the same version shown in Deployment activity. Both panels clear their previous evidence.",
+    steps: [
+      "Read the completed record, focus Refresh record, and press Enter. Both panels must show the refusal, with no completed outcome remaining.",
+      "Focus remains on Refresh record. Fold and unfold Deployment details: only the visible leading refusal owns the alert role.",
+      "Refresh record again after the one-time refusal. Both panels recover to Completed and the overview refreshes once. Repeat on the settled record: its overview does not reread.",
+    ],
+    gap: "Simulated UI proof only. The deployment browser suite verifies native IAM denial, missing records, stale deliveries, recovery, and version isolation with the real controller.",
   },
   deploymentActivityLoading: {
     group: "Pages/Agent detail",
@@ -6611,6 +6647,28 @@ export const scenarios = {
       },
     ],
     description: "The Configuration read fails independently of the Agent header.",
+  },
+  configurationReadDeniedReloadRefocus: {
+    group: "Pages/Agent detail",
+    name: "Configuration read denied across reload and refocus",
+    path: draft,
+    rules: [
+      {
+        method: "GET",
+        path: "/namespaces/ns_00000000-0000-4000-8000-000000000001/configurations/cfg_00000000-0000-4000-8000-000000000001",
+        status: 403,
+      },
+    ],
+    description:
+      "The draft Configuration is never readable. Its repeated permission denial preserves the permitted Agent after reload and a fresh refocus check.",
+    steps: [
+      "Confirm the Agent heading and Configuration unavailable are visible together. This is a persistent 403, not a 503 or unreadable saved data.",
+      "Reload the Storybook preview page in the browser. The same tab remembers the exact denied path and still shows the partial Agent.",
+      "Focus another browser tab, then return to the Console preview. Refocus sends a fresh Configuration GET returning 403; the Agent remains visible without draft editors.",
+      "Choose Retry to perform another denied read. Repeat at phone width. No Save action is available for the unreadable draft.",
+      "For Save recovery, follow Channel binding read denied and the binding preflight workflow: Save, inspect the scrubbed refusal, Refresh, then explicitly save again.",
+    ],
+    gap: "Simulated permission responses through the production Console; Native IAM browser regressions cover real authorization. See unreadable-configuration-workflow.md for reload, refocus, and Save recovery instructions.",
   },
   unreadableAgentConfiguration: {
     group: "Pages/Agent detail",
@@ -8012,6 +8070,96 @@ export const scenarios = {
     steps: [
       "The Slack app token reads Bound · Agent access not confirmed; the warning says deploying would be refused.",
       "Select Retry Secret access. Both tokens read Bound and Deploy new version is available; do not deploy.",
+    ],
+  },
+  authenticationReadDenied: {
+    group: "Pages/Agent detail",
+    name: "Authentication Save read denied",
+    path: `${draft}&tab=credentials`,
+    rules: [
+      {
+        method: "GET",
+        suffix: "/agents/agt_00000000-0000-4000-8000-000000000001",
+        skip: 1,
+        status: 403,
+        once: true,
+      },
+    ],
+    description:
+      "The Agent becomes unreadable before authentication Save. The contextual receipt remains while the Agent name, authentication binding and editors are removed.",
+    steps: [
+      "Select Save authentication source. Read the Save refusal and request ID; no editor or binding remains.",
+      "Select Refresh after the one-shot refusal. Saved state returns without replaying Save.",
+    ],
+  },
+  configurationSaveReadDenied: {
+    group: "Pages/Agent detail",
+    name: "Configuration Save read denied",
+    path: draft,
+    rules: [
+      {
+        method: "GET",
+        suffix: "/configurations/cfg_00000000-0000-4000-8000-000000000001",
+        skip: 1,
+        status: 403,
+        once: true,
+      },
+    ],
+    actions: [click("Enable gateway password access")],
+    description:
+      "A staged Configuration edit loses read access before Save. The entire protected editor is retired with its causal receipt, and no PATCH starts.",
+    steps: [
+      "Select Save Configuration. Confirm the staged document disappears and the read-access reason remains.",
+      "Refocus to see the partial Agent with Configuration unavailable. Select Retry after access recovers; the unsaved edit must not return.",
+    ],
+  },
+  credentialsSavedRetryReadDenied: {
+    group: "Components/Credentials",
+    name: "Saved channel bindings, retry read denied",
+    path: `${draft}&tab=credentials`,
+    slack: true,
+    rules: [
+      { method: "POST", suffix: "/iam/access-bindings", status: 403, once: true },
+      {
+        method: "GET",
+        suffix: "/configurations/cfg_00000000-0000-4000-8000-000000000001",
+        skip: 2,
+        status: 403,
+        once: true,
+      },
+    ],
+    actions: [
+      { selector: "#runtime-slack-app-token", value: "sec_demo_slack_backup_token" },
+      click("Save channel Secrets"),
+    ],
+    description:
+      "Bindings saved, but their grant failed. Retry then loses Configuration read access. A sanitized receipt preserves the successful save while removing binding metadata.",
+    steps: [
+      "Select Retry Secret access. The receipt says bindings are saved and the Configuration could not be read. No additional PATCH or grant starts.",
+      "Select Refresh, then Retry Secret access after reads recover. The saved replacement remains and only its missing grant is retried.",
+    ],
+  },
+  credentialsBindingReadDenied: {
+    group: "Components/Credentials",
+    name: "Channel binding read denied",
+    path: `${draft}&tab=credentials`,
+    slack: true,
+    rules: [
+      {
+        path: "/namespaces/ns_00000000-0000-4000-8000-000000000001/configurations/cfg_00000000-0000-4000-8000-000000000001",
+        method: "GET",
+        skip: 1,
+        status: 403,
+        once: true,
+      },
+    ],
+    actions: [{ selector: "#runtime-slack-app-token", value: "sec_demo_slack_backup_token" }],
+    description:
+      "The binding preflight is refused once. Its receipt remains visible, but the saved bindings and staged choice are removed. Refresh reads the saved state without repeating a write.",
+    steps: [
+      "Select Save channel Secrets. Check Access denied and the failed preflight receipt; no token picker or saved binding remains.",
+      "Select Refresh. The simulated read succeeds again and restores the saved bindings, without applying the staged choice.",
+      "Select Slack backup token (simulated) again, then Save channel Secrets once. A fresh preflight and one PATCH save that replacement. See unreadable-configuration-workflow.md for the complete walkthrough.",
     ],
   },
   credentialsSlackLeftoverGrantMissing: {
