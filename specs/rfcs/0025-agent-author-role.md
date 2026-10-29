@@ -39,9 +39,11 @@ An administrator currently has to create and prepare an Agent for a user, then g
 
 ## Proposal
 
-The selected IAM Driver continues to own identity resolution and authorization decisions. `POST /namespaces/:namespaceId/iam/roles` accepts the preset body `{ "preset": "agent-author" }` and returns the immutable canonical Role with ID `role_<namespaceId>_agent_author`. It does not accept caller-supplied permissions or a name for this preset. Repeating the request returns the same Role if its stored permissions match; a conflicting Role at that ID fails with `409`.
+The selected IAM Driver continues to own identity resolution and authorization decisions. Its identity lookup contract must resolve a Principal by its immutable ID so OCC can verify a Namespace-binding subject as a human before writing the grant. A driver that cannot make this check must reject preset assignment; OCC must not infer identity type from an ID prefix or fall back to another Driver.
 
-`POST /namespaces/:namespaceId/iam/access-bindings` accepts `{ "subjectKind": "identity", "subjectId": "<human-principal-id>", "roleId": "<agent-author-role-id>", "scope": "namespace" }`. This is the only Namespace-scoped binding variant: it rejects Groups, ServicePrincipals, arbitrary Roles, and any other Namespace-wide binding. Existing exact-resource binding requests keep their current shape. Creating or assigning the preset still requires the current Installation `administer` and Namespace `read` checks. A missing assignment grants nothing.
+`POST /namespaces/:namespaceId/iam/roles` accepts the preset body `{ "preset": "agent-author" }` and returns the immutable canonical Role with ID `role_<namespaceId>_agent_author`. It does not accept caller-supplied permissions or a name for this preset. Repeating the request returns the same Role if its stored permissions match; a conflicting Role at that ID fails with `409`.
+
+`POST /namespaces/:namespaceId/iam/access-bindings` accepts `{ "subjectKind": "identity", "subjectId": "<human-principal-id>", "roleId": "<agent-author-role-id>", "scope": "namespace" }`. The IAM Driver must support an untargeted Namespace AccessBinding in its transactional write contract. This is the only Namespace-scoped binding variant: it rejects Groups, ServicePrincipals, arbitrary Roles, and any other Namespace-wide binding. Existing exact-resource binding requests keep their current shape. Creating or assigning the preset still requires the current Installation `administer` and Namespace `read` checks. A missing assignment grants nothing.
 
 The Role grants these permissions throughout the assigned Namespace:
 
