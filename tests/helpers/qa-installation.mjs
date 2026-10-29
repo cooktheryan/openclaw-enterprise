@@ -477,7 +477,11 @@ export async function createQaInstallation(
     },
     async database(sql, variables = {}) {
       const values = Object.entries(variables).flatMap(([name, value]) => {
-        if (!/^[a-z_]+$/.test(name) || typeof value !== "string") {
+        if (
+          !/^[a-z_]+$/.test(name) ||
+          typeof value !== "string" ||
+          !/^[a-zA-Z0-9_-]+$/.test(value)
+        ) {
           throw new Error("Invalid QA database input.");
         }
         return ["--set", `${name}=${value}`];

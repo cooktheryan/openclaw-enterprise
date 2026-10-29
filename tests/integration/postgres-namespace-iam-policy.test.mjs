@@ -763,12 +763,56 @@ test(
         )
         .map(({ id }) => id),
     );
-    const administrator = persisted.bindings.find(
+    const administratorBindings = persisted.bindings.filter(
       (binding) => binding.subjectKind === "identity" && administratorRoleIds.has(binding.roleId),
     );
-    assert.ok(administrator, "the fixture must have a real Installation administrator");
+    assert.equal(
+      administratorBindings.length,
+      1,
+      "the fixture must have one explicitly provisioned Installation administrator",
+    );
+    const [administrator] = administratorBindings;
     const controller = new OpenClawController(installation, { state, recordOperations: false });
     controller.registerDriver(iam);
+    controller.selectDriver("iam", iam.id);
+
+    // A selected Driver that reports a noncanonical managed Role must not leave its
+    // otherwise successful policy write behind when OCC rejects the Driver response.
+    const mismatchedDriver = new Proxy(iam, {
+      get(target, property) {
+        if (property === "id") {
+          return "postgres-agent-author-mismatched-role";
+        }
+        if (property === "createNamespaceRole") {
+          return async (context, input) => ({
+            ...(await target.createNamespaceRole(context, input)),
+            name: "Unexpected Agent Author Role",
+          });
+        }
+        const value = Reflect.get(target, property, target);
+        return typeof value === "function" ? value.bind(target) : value;
+      },
+    });
+    controller.registerDriver(mismatchedDriver);
+    controller.selectDriver("iam", mismatchedDriver.id);
+    await assert.rejects(
+      controller.createIAMRole(administrator.subjectId, {
+        namespaceId: namespace.id,
+        preset: "agent-author",
+      }),
+      /different Agent Author Role/,
+    );
+    assert.equal(
+      await state.read((unit) =>
+        iam.getNamespaceRole(
+          { policy: unit.iamPolicy },
+          namespace.id,
+          `role_${namespace.id}_agent_author`,
+        ),
+      ),
+      undefined,
+      "a rejected Driver response must roll back its Namespace Role write",
+    );
     controller.selectDriver("iam", iam.id);
 
     const role = await controller.createIAMRole(administrator.subjectId, {

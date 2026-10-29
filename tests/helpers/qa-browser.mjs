@@ -544,7 +544,7 @@ export async function createQaBrowser(f, { themed, artifactsDirectory }) {
         );
         await request(
           "GET",
-          `/namespaces/${f.namespace.id}/secrets/sec_${randomUUID()}`,
+          `/namespaces/${f.namespace.id}/secrets/${replacementSecret.id}`,
           undefined,
           403,
         );

@@ -1526,7 +1526,7 @@ export const scenarios = {
       { click: "Delete Namespace" },
     ],
     description:
-      "A simulated NAMESPACE_NOT_EMPTY response names remaining resources. Open Agents or Secrets, or inspect Configuration cleanup commands.",
+      "A simulated NAMESPACE_NOT_EMPTY response names remaining resources the caller can read and counts the rest. Open Agents or Secrets, or inspect Configuration cleanup commands.",
   },
   namespaceDeleteDenied: {
     group: "Pages/Namespaces",
@@ -4904,6 +4904,24 @@ export const scenarios = {
       "The Configuration denies every tool of the selected plugin, so the API refuses the save. The refusal shows as an error and takes focus; editing the selections clears it.",
     gap: "The refusal is simulated; the in-memory API's plugin check is covered by tests/browser/console-agent-plugin-refusals.test.mjs.",
   },
+  pluginsPrefetchReturn: {
+    group: "Pages/Agent detail",
+    name: "Return before plugin prefetch starts",
+    path: draft,
+    deployed: true,
+    auth: "codex_pat",
+    agentPlugins: JSON.parse(pluginSelections),
+    pluginCapabilities,
+    pluginDiscovery,
+    actions: [click("Plugins"), click("Configuration")],
+    description:
+      "The fixture leaves Plugins while catalog prefetch is deferred. Returning can load the catalog without losing saved selections.",
+    steps: [
+      "After the initial Configuration view settles, select Plugins and open Configure plugins. Calendar should load and Load plugins should be enabled; Loading plugins must not persist.",
+      "Close and reopen the picker. Calendar's saved policy is unchanged. Repeat from Reset story to inspect the skipped prefetch again.",
+    ],
+    gap: "Catalog responses and the saved Agent are simulated. This verifies Console recovery, not plugin installation or a live runtime.",
+  },
   pluginsDraft: {
     group: "Pages/Agent detail",
     name: "Edit plugins in new version",
@@ -5118,6 +5136,22 @@ export const scenarios = {
     steps: [
       "Read the error under the editor: Invalid JSON at line 1, column 18.",
       "Count the visible characters on the line: the x is the 18th.",
+    ],
+  },
+  invalidConfigurationCurlyQuotes: {
+    group: "Pages/Agent detail",
+    name: "Invalid Configuration JSON with curly quotes",
+    path: draft,
+    actions: [
+      click("Edit Configuration"),
+      // Quotes a word processor or chat app curled, as pasted from a document.
+      { selector: "#configuration-json", value: '{\n  "agents": {\u201Cdefaults\u201D: {}}\n}' },
+      click("Save Configuration"),
+    ],
+    description:
+      "A key wrapped in curly quotes looks like JSON but is not. The error names the curly quote and the straight quote to use instead.",
+    steps: [
+      'Read the error under the editor: Invalid JSON at line 2, column 14: replace the curly quote \u201C there with a straight quote (").',
     ],
   },
   configurationChangedElsewhereMerged: {
@@ -6159,6 +6193,51 @@ export const scenarios = {
     description:
       "A newer version the viewer cannot read superseded v7 before it became current. Latest visible deployment reads v7 · Superseded with neutral stages and no failure banner, and nothing names the newer version.",
     gap: "The superseded record is simulated UI evidence; it does not verify a live deployment.",
+  },
+  agentCurrentVersionHidden: {
+    group: "Pages/Agent detail",
+    name: "Current version newer and unreadable",
+    // No version in the link: the page opens the current one, v8, which the viewer cannot read.
+    path: "/console/agents/agt_00000000-0000-4000-8000-000000000001?namespace=ns_00000000-0000-4000-8000-000000000001",
+    deployed: true,
+    candidateDeploymentStatus: "succeeded",
+    candidateSuperseded: true,
+    rules: [
+      {
+        suffix: "/revisions/rev_00000000-0000-4000-8000-000000000008",
+        status: 403,
+        code: "FORBIDDEN",
+      },
+    ],
+    description:
+      "Every version the reader can read is on the first page of versions, and the current one is not among them, so the page names it as the Agents list does and does not read it. v7's deployment succeeded, so the current version is newer.",
+    steps: [
+      'Selected for service reads "A newer version you cannot read"; the line under the version chooser reads "A newer version you cannot read remains selected for service." and the status line "The current version is one you cannot read; v7 is an older version." No raw version ID shows.',
+      "The request log shows no read of the current version.",
+    ],
+  },
+  agentCurrentVersionHiddenLogs: {
+    group: "Pages/Agent detail",
+    name: "Logs of a current version the viewer cannot read",
+    // The current version, v8, which the viewer cannot read, opened on its Logs tab.
+    path: "/console/agents/agt_00000000-0000-4000-8000-000000000001?namespace=ns_00000000-0000-4000-8000-000000000001&tab=logs",
+    deployed: true,
+    candidateDeploymentStatus: "succeeded",
+    candidateSuperseded: true,
+    rules: [
+      {
+        suffix: "/revisions/rev_00000000-0000-4000-8000-000000000008",
+        status: 403,
+        code: "FORBIDDEN",
+      },
+    ],
+    description:
+      "An operator opens Logs on a current version she cannot read. Runtime status also needs AgentRevision read on it, so the page does not read it and says why in words; log text, which needs no version read, still shows.",
+    steps: [
+      'The runtime strip reads "You cannot read this version, so its runtime status is not shown. Ask an Installation administrator for AgentRevision read on it." with no Request ID.',
+      "The request log shows no /runtime status read and no read of the current version; log output still loads.",
+    ],
+    gap: "Simulated UI proof: it does not verify the API's refusal of the status read.",
   },
   deploymentSucceeded: {
     group: "Pages/Agent detail",
@@ -8496,7 +8575,11 @@ export const scenarios = {
     name: "Stopped",
     path: draft,
     nativeAdmin: "stopped",
-    description: "The native-admin panel reports that the Agent must be started.",
+    description:
+      "The native-admin panel reports that the Agent must be started. The header's Open Agent UI stays in the Tab order, unavailable, and its description names that reason.",
+    steps: [
+      "Tab to Open Agent UI in the header. It takes focus, looks unavailable, and pressing Enter opens nothing.",
+    ],
     gap: "Deploying a new revision resumes the Agent; Console does not expose live shutdown completion evidence.",
   },
   nativeUnsupported: {
@@ -9514,6 +9597,7 @@ for (const [id, state, name] of [
     "Policy application refused by a changed ceiling",
   ],
   ["policyDenialsApplyRejected", "applyRejected", "Policy saved but live application rejected"],
+  ["policyDenialsApplyDenied", "applyDenied", "Policy saved but live application refused access"],
   ["policyIncompletePreview", "incompletePreview", "Policy preview omits the validated rules"],
   ["policyUnconfirmedSave", "unconfirmedSave", "Policy save returns different rules than reviewed"],
   ["policyDenialsEditDenied", "editDenied", "Independent policy permission denied"],
@@ -9620,6 +9704,22 @@ for (const [id, state, name] of [
           steps: [
             "Review a suggestion, then choose Review changes and Save and apply to current revision.",
             "Confirm the alert states the policy was saved but application was not confirmed. The saved version increases and the rule remains saved; do not infer live enforcement.",
+          ],
+        }
+      : {}),
+    ...(state === "applyDenied"
+      ? {
+          rules: [
+            {
+              method: "POST",
+              suffix: "/sandbox-policy/networking/apply",
+              status: 403,
+              code: "FORBIDDEN",
+            },
+          ],
+          steps: [
+            "Review a suggestion, then choose Review changes and Save and apply to current revision.",
+            "The simulated apply answers 403, as when SandboxPolicy read is revoked while the page is open. Confirm the alert says the policy was saved but not applied, and names Agent manage_policy and SandboxPolicy update and read.",
           ],
         }
       : {}),
