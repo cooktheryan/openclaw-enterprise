@@ -1105,6 +1105,125 @@ test(
 );
 
 test(
+  "PostgreSQL Agent credential reconciliation removes legacy grants and retains administrator bindings",
+  requiresPostgres,
+  async (context) => {
+    const { Pool } = await import("pg");
+    const pool = new Pool({ connectionString: databaseUrl });
+    context.after(() => pool.end());
+    const state = new PostgresPlatformState(pool);
+    const iam = new NativeIAMDriver(state, { id: "postgres-agent-author-legacy-grants" });
+    const { installation, namespace, secret, configuration, agent } =
+      await createNamespaceAgentState(state);
+    const configurationDriver = createTestConfigurationDriver({
+      id: "configuration-agent-author-legacy-grants",
+    });
+    const secretDriver = createTestSecretDriver({ id: secret.driverId });
+    await configurationDriver.create({ ...configuration, values: { model: "before-cleanup" } });
+    const principal = await createHumanPrincipal(state);
+    const persisted = await state.loadNativeIAMState(installation.id);
+    const administratorRoleIds = new Set(
+      persisted.roles
+        .filter((role) =>
+          role.permissions.some(
+            (permission) =>
+              permission.action === "administer" && permission.resourceKind === "installation",
+          ),
+        )
+        .map(({ id }) => id),
+    );
+    const administrator = persisted.bindings.find(
+      (binding) => binding.subjectKind === "identity" && administratorRoleIds.has(binding.roleId),
+    );
+    assert.ok(administrator, "the fixture must have a real Installation administrator");
+    const controller = new OpenClawController(installation, { state, recordOperations: false });
+    controller.registerDriver(iam);
+    controller.selectDriver("iam", iam.id);
+    controller.registerDriver(configurationDriver);
+    controller.selectDriver("configuration", configurationDriver.id);
+    controller.registerDriver(secretDriver);
+    controller.selectDriver("secret", secretDriver.id);
+
+    const authorRole = await controller.createIAMRole(administrator.subjectId, {
+      namespaceId: namespace.id,
+      preset: "agent-author",
+    });
+    await controller.createIAMAccessBinding(administrator.subjectId, {
+      namespaceId: namespace.id,
+      subjectKind: "identity",
+      subjectId: principal.id,
+      roleId: authorRole.id,
+      scope: "namespace",
+    });
+    const managedSecretRole = await state.transact((unit) =>
+      iam.createNamespaceRole(
+        { policy: unit.iamPolicy },
+        {
+          id: `role_${namespace.id}_agent_secret_operate`,
+          namespaceId: namespace.id,
+          name: "Agent Secret operate",
+          permissions: [{ action: "operate", resourceKind: "secret" }],
+        },
+      ),
+    );
+    const legacyBinding = await state.transact((unit) =>
+      iam.createNamespaceAccessBinding(
+        { policy: unit.iamPolicy },
+        {
+          id: `binding_${agent.id}_${secret.id}_operate`,
+          namespaceId: namespace.id,
+          subjectKind: "identity",
+          subjectId: agent.servicePrincipalId,
+          roleId: managedSecretRole.id,
+          resourceKind: "secret",
+          resourceId: secret.id,
+        },
+      ),
+    );
+    const administratorRole = await controller.createIAMRole(administrator.subjectId, {
+      namespaceId: namespace.id,
+      permissions: [{ action: "operate", resourceKind: "secret" }],
+    });
+    const administratorBinding = await controller.createIAMAccessBinding(administrator.subjectId, {
+      namespaceId: namespace.id,
+      subjectKind: "identity",
+      subjectId: agent.servicePrincipalId,
+      roleId: administratorRole.id,
+      resourceKind: "secret",
+      resourceId: secret.id,
+    });
+
+    // Old product grants and administrator-created grants share the Agent ServicePrincipal.
+    // Reconciliation must identify only the legacy generated ID when the Configuration no longer
+    // refers to the Secret, and leave the independent administrator grant effective.
+    const updated = await controller.updateConfiguration(principal.id, {
+      namespaceId: namespace.id,
+      configurationId: configuration.id,
+      values: { model: "after-cleanup" },
+      secretBindings: {},
+    });
+    assert.equal(updated.generation, configuration.generation + 1);
+    const bindings = await state.read((unit) => unit.iamPolicy.listAccessBindings(namespace.id));
+    assert.equal(
+      bindings.some((binding) => binding.id === legacyBinding.id),
+      false,
+      "reconciliation must clean an obsolete legacy Agent credential grant",
+    );
+    assert.ok(
+      bindings.some((binding) => binding.id === administratorBinding.id),
+      "reconciliation must preserve the independently created administrator binding",
+    );
+    const authorization = await iam.authorize({
+      principalId: agent.servicePrincipalId,
+      action: "operate",
+      resource: { kind: "secret", id: secret.id, namespaceId: namespace.id },
+    });
+    assert.equal(authorization.allowed, true);
+    assert.deepEqual(authorization.evidence.bindingIds, [administratorBinding.id]);
+  },
+);
+
+test(
   "PostgreSQL native IAM rolls back policy mutations when transaction audit fails",
   requiresPostgres,
   async (context) => {
