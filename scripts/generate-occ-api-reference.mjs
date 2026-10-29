@@ -184,15 +184,23 @@ function schemaRows(schema, document, parent = "") {
 function schemaTable(schema, document, { alternatives = false } = {}) {
   const resolvedSchema = resolveSchema(schema, document);
   if (alternatives && resolvedSchema.anyOf) {
-    return resolvedSchema.anyOf
-      .map(
+    const common =
+      schemaRows(resolvedSchema, document).length > 0
+        ? [schemaTable(resolvedSchema, document)]
+        : [];
+    return [
+      ...common,
+      ...resolvedSchema.anyOf.map(
         (alternative, index) =>
           `**Alternative ${index + 1}:**\n\n${schemaTable(alternative, document, { alternatives: true })}`,
-      )
-      .join("\n\n");
+      ),
+    ].join("\n\n");
   }
   const rows = schemaRows(resolvedSchema, document);
   if (rows.length === 0) {
+    if (resolvedSchema.required?.length > 0) {
+      return `Required fields: ${resolvedSchema.required.map((field) => `\`${field}\``).join(", ")}.`;
+    }
     return `Schema: \`${schemaType(schema, document)}\`.`;
   }
 

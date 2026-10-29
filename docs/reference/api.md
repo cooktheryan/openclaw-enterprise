@@ -3012,13 +3012,34 @@ Replace an exact Namespace-owned Agent's editable draft
 
 **Content type:** `application/json`
 
+| Field | Type | Required | Constraints |
+| --- | --- | --- | --- |
+| `backendId` | `string or null` | No | — |
+| `configurationId` | `string` | No | pattern: `^cfg_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$` |
+| `credentialSources` | `array<object>` | No | max items: 8; Every credential source the Agent uses, at each source's endpoints. A credential-source harnessAuth names one entry. The selected Credential Gateway injects them at deployment; the Agent never receives their values. |
+| `credentialSources[].sourceId` | `string` | Yes | pattern: `^cs_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$` |
+| `executionMode` | `"embedded" or "dedicated"` | No | — |
+| `gatewayManagedMode` | `boolean` | No | Whether OCE restricts Gateway-local administration. Defaults on when the selected Compute Driver supports it, otherwise off. Changing the setting requires Installation administer permission and takes effect on deployment. |
+| `harnessAuth` | `object or object or object or object or null` | No | — |
+| `pluginApprovers` | `PluginApprovers or null` | No | — |
+| `plugins` | `PluginDesiredState` | No | Agent plugin selection map. Keys must be 1-253 characters matching ^[A-Za-z0-9._~:@-]{1,253}$. |
+| `repositoryAccess` | `object` | No | Desired repository access. Each omitted repository profile inherits defaultProfile; explicit profiles remain overrides. Mutually exclusive with repositoryBindings in create, provision, and update requests. |
+| `repositoryAccess.defaultProfile` | `string` | Yes | min length: 1; max length: 128; pattern: `^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$` |
+| `repositoryAccess.repositories` | `array<object>` | Yes | max items: 16 |
+| `repositoryAccess.repositories[].profile` | `string` | No | min length: 1; max length: 128; pattern: `^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$` |
+| `repositoryAccess.repositories[].repositoryRef` | `string` | Yes | min length: 1; max length: 128; pattern: `^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$` |
+| `repositoryBindings` | `array<object>` | No | max items: 16; Requested repository references and optional profiles. Omission means no bindings on create and preserves bindings on update; an empty update clears bindings. Admission requires unique repository references. |
+| `repositoryBindings[].profile` | `string` | No | min length: 1; max length: 128; pattern: `^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$` |
+| `repositoryBindings[].repositoryRef` | `string` | Yes | min length: 1; max length: 128; pattern: `^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$` |
+| `repositoryStandingApproval` | `object or object` | No | — |
+
 **Alternative 1:**
 
-Schema: `any`.
+Required fields: `configurationId`.
 
 **Alternative 2:**
 
-Schema: `any`.
+Required fields: `gatewayManagedMode`.
 
 ##### Responses
 
