@@ -1,7 +1,7 @@
 ---
 created: 2026-09-09
 updated: 2026-10-29
-last_updated_session: authoring-run/2282a5a5-302e-4a87-b067-449b9b4f2e22
+last_updated_session: authoring-run/f1c9ee28-91e7-426f-a543-14adabf6bdeb
 ---
 
 # Console Agent editing and runtime requests
@@ -241,11 +241,15 @@ bound Secret's grant, as deployment does; Deploy waits for those reads and reche
 POST, and a save or Retry during one reads again before naming Deploy.
 
 For an Agent Author, OCC grants the Agent ServicePrincipal `operate` only on its bound Secrets
-and credential sources in the Agent create or update transaction. The Console makes no separate
-IAM write. After a replacement version becomes active, OCC removes only generated grants the
-Agent no longer uses and preserves administrator-created bindings. The selected IAM Driver must
-support transactional policy writes; otherwise OCC refuses the change. Audit records each grant
-and removal.
+and credential sources in the Agent create, Agent update, or Configuration update transaction.
+The Console makes no separate IAM write. The HTTP handlers use `transactIAM` for these writes.
+For a session caller, the controller holds the admitted session through the resource write,
+credential grants, and audit, then checks the session again before commit. Logout on another API
+replica waits for this transaction; an expired session fails before commit. Service-key callers
+use the ordinary transaction because they have no human session. After a replacement version
+becomes active, OCC removes only generated grants the Agent no longer uses and preserves
+administrator-created bindings. The selected IAM Driver must support transactional policy writes;
+otherwise OCC refuses the change. Audit records each grant and removal.
 
 `agents/credentials.mjs:missingChannelCredentialGroups` reads token keys as the Slack Channel
 Driver does; pickers appear only for standard keys. A 400 that
@@ -329,6 +333,7 @@ Moved to [Agent stop and deletion](agent-stop-and-deletion.md#8-confirm-deletion
   exact Secret `read`.
 - After a partial save, inspect Configuration, Secret metadata, and Agent IAM
   bindings before retrying; storage and binding do not prove runtime delivery.
+- Run `OCC_PRODUCTION_WIREUP_DATABASE_URL=<disposable PostgreSQL URL> node --test tests/integration/postgres-production-wireup.test.mjs` to exercise a cross-replica logout while an Agent Author Configuration update waits on its Namespace lock. The test checks the saved Configuration and generated Agent credential grant after logout completes.
 - After a plugin edit, compare saved `Agent.plugins` with the version's plugin
   snapshot; an Agent update installs or activates no plugin until a deployment.
 - [Console failures](../../reference/console.md#failures-and-logout) covers session,
@@ -345,6 +350,8 @@ Moved to [Agent stop and deletion](agent-stop-and-deletion.md#8-confirm-deletion
 [keep this for the user to add notes. do not change between edits]
 
 ## Changelog
+
+- 2026-10-29 11:38: Hold Agent Author sessions through Configuration and credential grant commits. (authoring-run/f1c9ee28-91e7-426f-a543-14adabf6bdeb - 0459f99245896167657d5965a4941ab1250045e1; accompanying uncommitted changes)
 
 - 2026-10-29 12:43: Preserve overlapping overview and record reads. (authoring-run/22e56d10-b3c5-43f9-b088-c060fbfbe64f - 4af87e8139aafb7469b60cf38846935c1266baed)
 

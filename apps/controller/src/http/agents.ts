@@ -254,10 +254,19 @@ export function createAgentHandlers(options: AgentHandlerOptions) {
       };
       reply.status(202).send({ data: result, meta: { requestId: request.id } });
     },
-    async createAgent({ controller, context, request, reply, body, namespaceId, mutationEvent }) {
+    async createAgent({
+      controller,
+      context,
+      request,
+      reply,
+      body,
+      namespaceId,
+      mutationEvent,
+      transactIAM,
+    }) {
       const input = body as Omit<CreateAgentInput, "namespaceId">;
       validateWorkspaceSetup(input);
-      const agent = await controller.transact(async (unit) => {
+      const agent = await transactIAM(async (unit) => {
         const created = await controller.createAgent(
           context.actorId,
           { ...input, namespaceId },
@@ -354,12 +363,9 @@ export function createAgentHandlers(options: AgentHandlerOptions) {
     }) {
       const agentId = params.agentId!;
       const update = body as Omit<UpdateAgentInput, "namespaceId" | "agentId">;
-      // Standing approval changes hold the same session authority as an IAM policy write.
-      const transact =
-        update.repositoryStandingApproval === undefined
-          ? controller.transact.bind(controller)
-          : transactIAM;
-      const agent = await transact(async (unit) => {
+      // Agent Author updates can reconcile credential grants as well as change standing
+      // approvals, so the assigning session stays held until every effect commits.
+      const agent = await transactIAM(async (unit) => {
         const updated = await controller.updateAgent(
           context.actorId,
           {

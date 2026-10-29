@@ -1064,6 +1064,137 @@ test(
             signInWithEmailPassword({ origin: endpoint, email: adminEmail, password });
 
           await t.test(
+            "an Agent Author session stays held through Configuration credential grants",
+            async () => {
+              const role = await request("POST", `${policyPath}/roles`, {
+                preset: "agent-author",
+              });
+              assert.equal(role.status, 201);
+              const authorEmail = `author-${randomUUID()}@example.test`;
+              const authorPassword = `author-${randomUUID()}`;
+              const account = await request("POST", "/api/auth/accounts", {
+                email: authorEmail,
+                password: authorPassword,
+                name: "Agent Author",
+                roleId: readerRoleId,
+              });
+              assert.equal(account.status, 201);
+              const assignment = await request("POST", `${policyPath}/access-bindings`, {
+                subjectKind: "identity",
+                subjectId: account.data.principalId,
+                roleId: role.data.id,
+                scope: "namespace",
+              });
+              assert.equal(assignment.status, 201);
+
+              const secretsPath = `/namespaces/${namespaceId}/secrets`;
+              const secret = await request("POST", secretsPath, {
+                name: `author-token-${randomUUID()}`,
+                value: `synthetic-${randomUUID()}`,
+              });
+              assert.equal(secret.status, 201);
+              const configurationPath = `/namespaces/${namespaceId}/configurations/${defaultConfiguration.data.id}`;
+              const current = await request("GET", configurationPath);
+              assert.equal(current.status, 200);
+
+              const replica = await composeProduction({
+                mode: "production",
+                host: "127.0.0.1",
+                databaseUrl,
+                authSecret,
+                authBaseURL,
+                drivers: await productionDrivers(),
+                logger: apiLog.logger,
+              });
+              const replicaEndpoint = await replica.listen({ port: 0, host: "127.0.0.1" });
+              const assigning = await signInWithEmailPassword({
+                origin: replicaEndpoint,
+                email: authorEmail,
+                password: authorPassword,
+              });
+              const blocker = await pool.connect();
+              let released = false;
+              let pendingUpdate;
+              let pendingLogout;
+              try {
+                await blocker.query("BEGIN");
+                const {
+                  rows: [{ pid }],
+                } = await blocker.query("SELECT pg_backend_pid() AS pid");
+                await blocker.query("SELECT id FROM occ.namespaces WHERE id=$1 FOR UPDATE", [
+                  namespaceId,
+                ]);
+                pendingUpdate = fetch(`${endpoint}${configurationPath}`, {
+                  method: "PATCH",
+                  headers: authenticatedHeaders(assigning, {
+                    origin: authBaseURL,
+                    "content-type": "application/json",
+                  }),
+                  body: JSON.stringify({
+                    values: current.data.values,
+                    expectedGeneration: current.data.generation,
+                    secretBindings: {
+                      EXTERNAL_API_TOKEN: {
+                        source: secret.data.ref,
+                        delivery: { type: "env" },
+                      },
+                    },
+                  }),
+                });
+                const updatePid = await waitForLockWaiter(
+                  pool,
+                  pid,
+                  "the Agent Author Configuration update waiting for its Namespace",
+                );
+
+                // A second API replica must wait for the session held by the real Configuration
+                // update. Releasing the Namespace lets the update save its document and generated
+                // Agent credential grant before logout can revoke the assigning session.
+                pendingLogout = fetch(`${replicaEndpoint}/api/auth/sign-out`, {
+                  method: "POST",
+                  headers: authenticatedHeaders(assigning, { origin: authBaseURL }),
+                });
+                await waitForLockWaiter(
+                  pool,
+                  updatePid,
+                  "cross-replica logout waiting for the Agent Author session hold",
+                );
+                await blocker.query("COMMIT");
+                released = true;
+
+                const updated = await pendingUpdate;
+                const updateBody = await updated.json();
+                assert.equal(updated.status, 200, JSON.stringify(updateBody));
+                const logout = await pendingLogout;
+                assert.equal(logout.status, 200);
+
+                const grant = await pool.query(
+                  `SELECT binding.id, binding.role_id
+                   FROM occ.iam_access_bindings AS binding
+                   WHERE binding.namespace_id=$1
+                     AND binding.identity_subject_id=$2
+                     AND binding.resource_kind='secret'
+                     AND binding.resource_id=$3`,
+                  [namespaceId, defaultAgent.data.servicePrincipalId, secret.data.id],
+                );
+                assert.deepEqual(grant.rows, [
+                  {
+                    id: `binding_${defaultAgent.data.id}_secret_${secret.data.id}_operate`,
+                    role_id: `role_${namespaceId}_agent_secret_operate`,
+                  },
+                ]);
+              } finally {
+                if (!released) {
+                  await blocker.query("ROLLBACK");
+                }
+                blocker.release();
+                await Promise.allSettled([pendingUpdate, pendingLogout]);
+                await replica.close();
+              }
+            },
+          );
+
+          await t.test(
             "a revoked assigning session cannot finish an admitted sharing grant",
             async () => {
               const assigning = await signInAdministrator();

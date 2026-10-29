@@ -1833,8 +1833,8 @@ function renderAgentForm(
     "Checking installation capabilities…",
   );
   // Above the form, not mid-form: why a member's form offers what it does (UX plan A2).
-  // Granting an Agent access to its Secrets is Installation administration, so the member learns
-  // before Create that an administrator finishes that step.
+  // Agent Authors receive exact credential grants in the Agent mutation transaction; other members
+  // need an Installation administrator to grant access to the Agent's Secrets.
   const namespaceName = context.namespace?.name ?? "this Namespace";
   const accessStatus = statusBlock(
     "info",
@@ -3679,8 +3679,8 @@ function renderAgentForm(
           },
         }).catch((error: unknown) => {
           if (requestFailure(error).status === 403) {
-            // A refused Configuration create names the grants it needs: one fixed text for
-            // every 403, since only an Installation administrator can create one (finding 2111).
+            // A refused Configuration create names the grants it needs: the managed Agent Author
+            // Role grants Configuration create and Secret operate in its Namespace (finding 2111).
             responseFields(error).refusal = CONFIGURATION_CREATE_REFUSED;
           }
           throw error;

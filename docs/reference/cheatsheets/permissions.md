@@ -59,9 +59,10 @@ An account created with the Installation administrator `roleId` holds only
 
 A `403 FORBIDDEN` for a grant you lack names it and who grants it, for example
 `Not authorized: this needs Agent deploy on Agent agt_1. Ask an Installation
-administrator to grant it.` No Role can hold create, so a create denial names
-its Namespace and says only an Installation administrator can create it. The
-message names a resource ID only when your request sent it in the path or an ID
+administrator to grant it.` The managed Agent Author Role grants supported
+Namespace-wide create permissions for Agents, Configurations, Secrets, and
+credential sources. Other create denials name the Namespace and direct you to
+an Installation administrator. The message names a resource ID only when your request sent it in the path or an ID
 field, or you can already read that resource, never a binding, Role or
 Restriction. A Secret or credential source that an Agent, Configuration or
 credential source binds is named only when you can also read the record that
@@ -134,17 +135,18 @@ operation was not authorized.`
 The [Namespace policy API](../authorization.md#manage-namespace-policy) accepts
 the per-kind actions in the table above on `agent`, `agent_revision`,
 `configuration`, `credential_source`, `preset`, `secret`, and `service_account`,
-except `create`.
+except `create`, which only the managed Agent Author Role grants at Namespace
+scope for its supported resource kinds.
 It refuses, with `400 INVALID_REQUEST`, a Role with a combination no operation
 checks, such as `secret:read_logs` or `configuration:deploy`, because it would
 grant nothing, and a Role with any `create` Permission, which no exact-resource
 binding can grant. On `namespace` it accepts only `read`.
 It can bind an existing human Principal or a Namespace-local ServicePrincipal
 to an existing exact resource, including the path Namespace itself. Exact
-Namespace access does not grant access to child resources.
-It cannot create Installation or Namespace-wide grants, including the collection
-permission needed to create resources. Existing Namespace-wide and Group
-bindings can still be listed or deleted. Groups and Restrictions cannot be
-managed through this API.
+Namespace access does not grant access to child resources. The managed Agent
+Author Role is the only Namespace-wide binding this API can create; it grants
+its fixed permissions across matching resources in that Namespace. Existing
+Namespace-wide and Group bindings can still be listed or deleted. The API
+cannot create Installation-wide grants or manage Groups and Restrictions.
 
 Per-Agent policy editing configuration requires Installation and exact-Agent `administer`. See [policy authority](../sandbox-policies.md#authority-and-admission).

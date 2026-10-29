@@ -1547,13 +1547,22 @@ test("a caller denial names each checked grant without disclosing a Restriction 
         /restriction-1|binding-1|role-1|prn_caller|matching|binding grants/,
         label,
       );
-      // No Role can hold create, so a create denial never asks for a grant (finding 2581).
+      // Supported Namespace-wide creates point to the managed Role; other creates stay
+      // Installation-administrator owned (finding 2581).
       if (action === "create" && kind !== "installation") {
-        assert.match(
-          restricted,
-          /Only an Installation administrator can create .+: ask one to create it\.$/,
-          label,
-        );
+        if (["agent", "configuration", "secret", "credential_source"].includes(kind)) {
+          assert.match(
+            restricted,
+            /Ask an Installation administrator to assign you the Agent Author Role in this Namespace or create .+\.$/,
+            label,
+          );
+        } else {
+          assert.match(
+            restricted,
+            /Only an Installation administrator can create .+: ask one to create it\.$/,
+            label,
+          );
+        }
         assert.doesNotMatch(restricted, /grant/, label);
       }
       // An exact resource is named only when the request carried its ID; a create names the

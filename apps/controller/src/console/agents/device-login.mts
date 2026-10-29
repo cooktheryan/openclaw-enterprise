@@ -6,7 +6,7 @@ import type {
 import { requestFailure, responseFields } from "../api-client.mjs";
 import { button, element } from "../dom.mjs";
 import type { AgentAccessContext } from "./credential-access.mjs";
-import { askAdministratorTo, notIncluded } from "./access-reasons.mjs";
+import { notIncluded } from "./access-reasons.mjs";
 import { message, namespacePath } from "./list.mjs";
 
 // The Console retains the public challenge and reference, never the provider's private state.
@@ -67,13 +67,13 @@ function readLogin(
 }
 
 // What each device-authorization request checks (packages/occ/src/index.ts), so a 403 names it
-// (finding 2577). Every start creates a Secret and a credential source, and Namespace Roles cannot
-// grant create, so only an Installation administrator can start one. Create Agent's requests also
-// check Agent create; Agent detail's check Agent read and update on that Agent. Poll and cancel
-// check Secret operate on the login's Secret, and poll operate on its credential source too.
+// (finding 2577). Every start creates a Secret and a credential source; the managed Agent Author
+// Role grants those creates and the Agent create/read/update permissions these requests need.
+// Poll and cancel check Secret operate on the login's Secret, and poll also checks credential
+// source operate.
 type DeviceLoginStep = "start" | "poll" | "cancel";
 const START_REMEDY =
-  "which only an Installation administrator holds: choose another authentication method, or ask one to set up this sign-in.";
+  "which the Agent Author Role grants: choose another authentication method, or ask an Installation administrator to assign that Role in this Namespace.";
 
 function deviceLoginDenied(step: DeviceLoginStep, agentScoped: boolean) {
   if (step === "start") {
@@ -88,7 +88,7 @@ function deviceLoginDenied(step: DeviceLoginStep, agentScoped: boolean) {
       : "Secret operate on the login's Secret";
   return agentScoped
     ? notIncluded(task, `Agent read and update on this Agent, plus ${login}`)
-    : `Your access does not include ${task}. It needs Agent create in this Namespace, which only an Installation administrator holds, plus ${login}. ${askAdministratorTo("check your access")}`;
+    : `Your access does not include ${task}. It needs Agent create in this Namespace, plus ${login}. Ask an Installation administrator to assign the Agent Author Role in this Namespace or check your access.`;
 }
 
 export function createDeviceLogin({

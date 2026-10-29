@@ -19,10 +19,10 @@ export const agentPrincipalDenied = (agent, target, grant = "Secret operate") =>
 // A denial echoes the ID its request sent, so a real and an unknown ID get answers that match once
 // each answer's own ID is hidden: the text never says whether the resource exists.
 export const sentIdHidden = (text, id) => text.replaceAll(id, "<id>");
-// A create needs the collection grant, which no Role can hold: only an Installation
-// administrator creates one. `kinds` is the plural, such as "Secrets".
+// A create needs the collection grant. The managed Agent Author Role grants supported
+// Namespace-wide creates; an Installation administrator assigns it. `kinds` is plural.
 export const createDenied = (kind, namespaceId, kinds = `${kind}s`) =>
-  `Not authorized: this needs ${kind} create in Namespace ${namespaceId}. Only an Installation administrator can create ${kinds}: ask one to create it.`;
+  `Not authorized: this needs ${kind} create in Namespace ${namespaceId}. Ask an Installation administrator to assign you the Agent Author Role in this Namespace or create ${kinds}.`;
 // The same create refused by a Restriction to a caller who administers the Installation, as the
 // console's AGENT_CREATE_RESTRICTED says (finding D769). Other callers get createDenied.
 export const createRestricted = (kind, namespaceId) =>
@@ -132,17 +132,16 @@ export const SIGN_IN_UNAVAILABLE =
 export const signInRateLimited = (seconds) =>
   `Too many attempts. Wait ${seconds === 1 ? "1 second" : `${seconds} seconds`}, then try again.`;
 export const SIGN_IN_RATE_LIMITED_MINUTE = "Too many attempts. Wait a minute, then try again.";
-// Create Agent and the Agents list for a caller without Agent create, which Namespace Roles cannot
-// grant people (findings 2496, 2508).
+// Create Agent and the Agents list for a caller without Agent create (findings 2496, 2508).
 export const AGENT_CREATE_DENIED =
-  "Your access does not include creating Agents in this Namespace. Only an Installation administrator can create Agents: ask one to create it and to give you access to edit and deploy it.";
+  "Your access does not include creating Agents in this Namespace. Ask an Installation administrator to assign you the Agent Author Role in this Namespace or create the Agent and give you access to edit and deploy it.";
 // The same places for an Installation administrator whom a deny Restriction keeps from creating
 // Agents in this Namespace (finding D759): administration cannot lift it.
 export const AGENT_CREATE_RESTRICTED =
   "A Restriction in this Namespace denies Agent create, even for Installation administrators. Ask whoever manages IAM Restrictions to lift it, or create the Agent in another Namespace.";
-// Secrets and Namespaces follow the same rule: Namespace Roles cannot grant people create.
+// Secret create is also granted by Agent Author; Namespace create remains administrator-owned.
 export const SECRET_CREATE_DENIED =
-  "Your access does not include creating Secrets in this Namespace. Only an Installation administrator can create Secrets: ask one to create it and to give you Secret read and operate on it.";
+  "Your access does not include creating Secrets in this Namespace. Ask an Installation administrator to assign you the Agent Author Role in this Namespace or create the Secret and give you Secret read and operate on it.";
 // Create Agent for a member whose Installation read and Agent create are both refused (create.mts).
 export const AGENT_CREATE_INSTALLATION_DENIED =
   "Creating an Agent needs Installation access that your account does not have. Ask an Installation administrator to create this Agent.";
@@ -295,10 +294,10 @@ export const AGENT_UPDATE_DENIED = notIncluded(
 export const AGENT_SOURCES_DENIED =
   "Saving these settings needs operate on each Secret and credential source this Agent and its Configuration bind, which your access does not include. Ask an Installation administrator for that access.";
 // Device login from Create Agent (Namespace-scoped) and from Agent detail (Agent-scoped): a start
-// creates a Secret and a credential source, which only an Installation administrator can create;
-// a poll or cancel checks the scope again plus operate on the login's Secret (finding 2577).
+// creates a Secret and a credential source, which the managed Agent Author Role can create; a
+// poll or cancel checks the scope again plus operate on the login's Secret (finding 2577).
 const DEVICE_LOGIN_START_REMEDY =
-  "which only an Installation administrator holds: choose another authentication method, or ask one to set up this sign-in.";
+  "which the Agent Author Role grants: choose another authentication method, or ask an Installation administrator to assign that Role in this Namespace.";
 export const DEVICE_LOGIN_START_DENIED = `Your access does not include starting a device login in this Namespace. It needs Agent create, Secret create and credential source create here, ${DEVICE_LOGIN_START_REMEDY}`;
 export const AGENT_DEVICE_LOGIN_START_DENIED = `Your access does not include starting a device login for this Agent. It needs Agent read and update on it, plus Secret create and credential source create in this Namespace, ${DEVICE_LOGIN_START_REMEDY}`;
 export const AGENT_DEVICE_LOGIN_POLL_DENIED = notIncluded(
@@ -633,16 +632,16 @@ export const WORKSPACE_SAVE_REFUSED = actionRefused(
   "saving this Agent's workspace files",
   "Agent operate on it",
 );
-// Configuration create, which only an Installation administrator holds.
+// Configuration create and bound Secret operate, which the managed Agent Author Role grants.
 export const CONFIGURATION_CREATE_REFUSED =
-  "Create was refused: your access does not include creating this Agent's Configuration. That needs Configuration create in this Namespace, which only an Installation administrator holds, plus Secret operate on each Secret it binds. Ask an Installation administrator to create this Agent.";
+  "Create was refused: your access does not include creating this Agent's Configuration. That needs Configuration create in this Namespace and Secret operate on each Secret it binds. Ask an Installation administrator to assign you the Agent Author Role in this Namespace or create this Agent.";
 // Repository choices for an Agent (Agent update) and for a new Agent (Agent create).
 export const REPOSITORY_CHOICES_AGENT_DENIED = notIncluded(
   "loading repository choices for this Agent",
   "Agent update on it",
 );
 export const REPOSITORY_CHOICES_CREATE_DENIED =
-  "Repository choices are not shown. Your access does not include creating Agents in this Namespace. Only an Installation administrator can create Agents: ask one to create it and to give you access to edit and deploy it.";
+  "Repository choices are not shown. Your access does not include creating Agents in this Namespace. Ask an Installation administrator to assign you the Agent Author Role in this Namespace or create the Agent and give you access to edit and deploy it.";
 // The sandbox policy editing setting, which only an Installation administrator who also
 // administers the Agent can change.
 export const POLICY_EDITING_SETTING_REFUSED =

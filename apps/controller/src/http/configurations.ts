@@ -44,8 +44,9 @@ export const configurationHandlers = {
     body,
     namespaceId,
     mutationEvent,
+    transactIAM,
   }) {
-    const configuration = await controller.transact(async (unit) => {
+    const configuration = await transactIAM(async (unit) => {
       const updated = await controller.updateConfiguration(context.actorId, {
         namespaceId,
         configurationId: params.configurationId as string,
