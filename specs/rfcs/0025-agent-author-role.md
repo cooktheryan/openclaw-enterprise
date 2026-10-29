@@ -21,6 +21,8 @@ Add one server-managed **Agent Author** Role that an Installation administrator 
 
 OCC checks every operation against the caller's exact action, resource kind, and scope. The bootstrap administrator can create Agents, but a regular user cannot receive `agent:create` through current Namespace policy APIs: those APIs reject `create` Permissions because they only create exact-resource bindings. Agent creation also needs Configuration read access and, depending on the selected resources, Secret, credential-source, and ServiceAccount permissions. The current contract is documented in [Authorization](../../docs/reference/authorization.md#manage-namespace-policy) and the [permissions cheat sheet](../../docs/reference/cheatsheets/permissions.md).
 
+This proposal uses the existing OCC Console for self-service Agent operations; it adds no new UI. A separate onboarding app and YAML or GitOps workflows are outside this scope. The grant covers one OCC Namespace: the assigned person can manage every matching Agent and use any Secret in that Namespace, including resources created by other people. This shared-authority tradeoff needs maintainer approval. Kubernetes RoleBindings do not authorize OCC API requests, and Agents are not Kubernetes custom resources, so this feature uses OCC IAM and grants no Kubernetes API access.
+
 An administrator currently has to create and prepare an Agent for a user, then grant exact-resource access for later management. A Namespace administrator should be able to delegate this work without granting Installation administration or changing existing users' access.
 
 ## Goals
@@ -75,7 +77,7 @@ Namespace Role and AccessBinding writes remain under the existing IAM policy tra
 
 Keeping current behavior would preserve least privilege but would continue to require an administrator for every new Agent and its dependencies. Allowing arbitrary Namespace-scoped Roles and `create` Permissions would make the feature flexible, but would reopen broad policy delegation that [RFC-0006](0006-basic-rbac/index.md) defers. One fixed, administrator-assigned preset supports the requested workflow while keeping the new authority explicit and reviewable.
 
-The chosen Role is intentionally Namespace-wide. A creator-only model would require a separate ownership and automatic-grant contract. The broader choice means any assigned user can use or delete matching resources already in the Namespace; operators must assign it only where that authority is acceptable. This MVP uses the existing editable Agent Configuration workflow. If the product needs template-only creation, that requires an API restriction and a separate decision.
+The chosen Role is intentionally Namespace-wide. A creator-only model would require a separate ownership and automatic-grant contract. The broader choice means any assigned user can use or delete matching resources already in the Namespace; operators must assign it only where that authority is acceptable. This MVP uses the existing editable Agent Configuration workflow. If the product needs template-only creation, that requires an API restriction and a separate decision. The managed Role is assigned to an OCE human Principal; native Kubernetes Users and ServiceAccounts are not accepted as subjects in this proposal.
 
 ## Delivery and verification
 
