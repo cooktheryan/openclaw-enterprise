@@ -3105,6 +3105,7 @@ function attachedGitExpires({ newHost, platformProfile = false }) {
           workspace,
           sandbox,
           signal,
+          "/sandbox/enterprise",
           world.retainedProviders,
         );
         world.id = sandboxId;
