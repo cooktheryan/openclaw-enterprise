@@ -13,6 +13,7 @@ import {
 } from "../helpers/egress-connected-inputs.mjs";
 import {
   arrangeRealPrerequisites,
+  selectLiveControllerPods,
   observePreparedStack,
   createRunEvidence,
 } from "../helpers/egress-installed-stack.mjs";
@@ -83,6 +84,7 @@ test(
       await verifyHostileResponsesAndRecovery(owned, turns);
       await observeCredentialLeaks(setup, stack, evidence, owned, deployment, rotatedSecret);
       await withdrawAndObserveSandboxAbsence(setup, stack, evidence, deployment, installed);
+      await recoverWorkerAndRefuseRedeployment(setup, stack, evidence, owned, deployment);
       assert.equal(
         owned.provider.observations.length,
         19,
@@ -703,4 +705,52 @@ async function withdrawAndObserveSandboxAbsence(setup, stack, evidence, deployme
     undefined,
   );
   await checkpoint("stop-based-withdrawal", { sandboxAbsent: true });
+}
+
+async function restartWorker(setup, stack, evidence, phase) {
+  const { checkpoint } = evidence;
+  const previous = stack.controllerPods.find(
+    ({ metadata }) => metadata.labels?.["app.kubernetes.io/component"] === "worker",
+  );
+  assert.ok(previous, "the prepared worker Pod is required");
+  await setup.f.kubectl(
+    "delete",
+    "pod",
+    previous.metadata.name,
+    "--namespace",
+    setup.input.controllerNamespace,
+  );
+  await setup.f.waitFor("replacement worker readiness", async () => {
+    const pods = await selectLiveControllerPods(setup);
+    const replacement = pods.find(
+      ({ metadata }) =>
+        metadata.labels?.["app.kubernetes.io/component"] === "worker" &&
+        metadata.uid !== previous.metadata.uid,
+    );
+    return replacement ?? undefined;
+  });
+  stack.controllerPods = await selectLiveControllerPods(setup);
+  await checkpoint(phase, {
+    previousWorkerUid: previous.metadata.uid,
+    replacementWorkerUid: stack.controllerPods.find(
+      ({ metadata }) => metadata.labels?.["app.kubernetes.io/component"] === "worker",
+    )?.metadata.uid,
+  });
+}
+
+async function recoverWorkerAndRefuseRedeployment(setup, stack, evidence, owned, deployment) {
+  const { namespacePath } = stack;
+  const { api, checkpoint } = evidence;
+  const { provider } = owned;
+  const { agent, source } = deployment;
+  await restartWorker(setup, stack, evidence, "worker-recovered-after-withdrawal");
+  const providerSendsBefore = provider.observations.length;
+  const refused = await api("POST", `${namespacePath}/agents/${agent.id}/deploy`, undefined, 403);
+  assert.equal(refused.error?.code, "CREDENTIAL_WITHDRAWN");
+  assert.equal(provider.observations.length, providerSendsBefore);
+  await checkpoint("recovered-worker-withdrawal-refusal", {
+    sourceId: source.id,
+    refusalCode: refused.error?.code,
+    providerSends: 0,
+  });
 }

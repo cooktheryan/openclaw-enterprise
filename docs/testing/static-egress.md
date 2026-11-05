@@ -311,9 +311,11 @@ The test creates resources through public APIs, deploys through the real worker,
 reads its persisted installation, and checks the authenticated supplier receipt.
 It uses the packaged Codex app-server caller from the Agent Gateway Pod. It
 explicitly adopts its fresh unbound source with `adoption: "live"` and
-`authorityScope: "execution"`. The origin observes seventeen requests: one
+`authorityScope: "execution"`. The origin observes nineteen requests: one
 normal startup probe, fifteen measured Codex sends (including six hostile
 responses and recovery), and one managed request from an ordinary sibling.
+After withdrawal, another worker replacement refuses the next deployment with
+`CREDENTIAL_WITHDRAWN` and sends no provider request.
 For that sibling and the direct TCP probe, the operator uses the supplier's
 authenticated [workload launch path](./protected-repository-custody.md) so both
 inherit the installed connection mediation. Kubernetes exec remains suitable for
