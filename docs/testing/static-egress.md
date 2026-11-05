@@ -246,7 +246,7 @@ with the `egress-connected` CLI lane. CI, GitHub dispatch and the generic `opens
 HTTP fixture do not run it. This retained lane is for existing qualified
 installations. It requires a prepared, authenticated controller, worker and supplier gateway. Missing selected inputs fail; a discovery skip proves nothing.
 
-Use a ready Namespace with one placement in disposable loopback k3d, enforcing
+Use a ready Namespace with one placement in disposable k3d, enforcing
 NetworkPolicies and the [normal OpenShell launch prerequisites](openshell.md).
 [Migrate a dedicated](postgresql.md) `openclaw_k8s_*` database, then run the controller
 and observer as `occ_app`. The test compares the database Installation with the controller's.
@@ -254,7 +254,7 @@ and observer as `occ_app`. The test compares the database Installation with the 
 The protected product and supplier source must agree on physical namespace
 mapping, loaded-enforcement receipt readiness, finite Responses protection and
 zero automatic retries, including the startup authentication probe. Build and
-select the corresponding immutable images before running. This test cannot
+select the corresponding immutable images before running. It cannot
 qualify a checkout that lacks those contracts or a legacy gateway-copy setup.
 
 Set `OCC_TEST_EGRESS_CONNECTED_INPUTS` to an absolute path to a private JSON file.
@@ -279,7 +279,7 @@ and appear in the certificate SAN. An mTLS input requires actual Backend mTLS su
 In the runner's private environment file, set `OCC_TEST_EGRESS_CONNECTED_CONTROLLER`
 to JSON containing the prepared `apiOrigin`, `namespaceId`, `model` and `providerOrigin`.
 They must match the stack manifest. Supply the provisioned non-Agent controller key
-in `OCC_TEST_EGRESS_CONNECTED_SERVICE_KEY`, never via a manifest-selected file.
+in `OCC_TEST_EGRESS_CONNECTED_SERVICE_KEY`, never through manifest selection.
 The test confines that key to the selected origin, refuses redirects and removes it from child environments.
 
 Set `OCC_TEST_DATABASE_URL` to the controller's loopback PostgreSQL URL without query
